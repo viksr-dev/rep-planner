@@ -65,6 +65,7 @@ input[type=number]{font-family:var(--mono);width:4.6em;text-align:right}
 .planrow{display:grid;grid-template-columns:5.5em 1fr;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .planrow select{width:100%}
 .tmpl .exrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;gap:8px;align-items:end;margin-top:10px}
+@media (min-width:561px){.tmpl .exrow{grid-template-columns:minmax(0,1fr) 4.8rem 4.8rem 4.8rem 7.5rem}.tmpl .f input{width:100%}}
 .tmpl .f{display:flex;flex-direction:column;gap:2px;font:500 .66rem var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .tmpl .f input{font:500 .95rem var(--mono);letter-spacing:0;color:var(--ink)}
 .tmpl .f select{font:400 .9rem var(--body);letter-spacing:0;text-transform:none;color:var(--ink)}

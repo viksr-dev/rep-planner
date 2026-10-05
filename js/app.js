@@ -107,7 +107,42 @@ function lsGet(k,f){try{const v=localStorage.getItem(k);return v?JSON.parse(v):f
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 
 /* ---------- form videos (YouTube ids, picked per exercise in the plans) ---------- */
-const VIDEOS={/*VIDEOS*/};
+const VIDEOS={
+  "Dumbbell_Bench_Press":{v:"VmB1G1K7v94",t:"How To: Dumbbell Chest Press"},
+  "Pushups":{v:"WDIpL0pjun0",t:"How to do a Push-Up | Proper Form & Technique | NASM"},
+  "One-Arm_Dumbbell_Row":{v:"Y35E0D7t6AQ",t:"One Arm Dumbbell Bent-Over Row"},
+  "Goblet_Squat":{v:"Xjo_fY9Hl9w",t:"How To Do A Dumbbell Goblet Squat"},
+  "Preacher_Curl":{v:"BPmUhDtdQfw",t:"How to Do Preacher Curls"},
+  "Plank":{v:"6LqqeBtFn9M",t:"How to do the perfect plank"},
+  "Incline_Dumbbell_Press":{v:"OC7Qs_SAO2E",t:"How To Do Incline Dumbbell Press Correctly"},
+  "Bent_Over_Two-Dumbbell_Row":{v:"6TSP1TRMUzs",t:"How To: Dumbbell Bent-Over Row"},
+  "Dumbbell_Shoulder_Press":{v:"WKEl69bIGus",t:"How to Do the Seated Dumbbell Shoulder Press"},
+  "Bench_Dips":{v:"WVeZDBhZwLA",t:"How to do a Bench Dip"},
+  "Bodyweight_Squat":{v:"ZLJBfYF_oO0",t:"Bodyweight Squat: How To"},
+  "Single_Leg_Glute_Bridge":{v:"3NXv0Nany-Q",t:"Single Leg Glute Bridge"},
+  "Decline_Dumbbell_Flyes":{v:"IMALXhhHRKM",t:"How to Do a Decline Dumbbell Fly"},
+  "Dips_-_Triceps_Version":{v:"85u_8mz5lBA",t:"Dips: Perfect Form & Common Mistakes"},
+  "Standing_Dumbbell_Triceps_Extension":{v:"dxdr8iSRLA8",t:"Dumbbell Seated Overhead Tricep Extension"},
+  "Lying_Dumbbell_Tricep_Extension":{v:"uXOm7MpK4HQ",t:"How to Perform a Dumbbell Skull Crusher"},
+  "Side_Lateral_Raise":{v:"ssAo_xwFt5c",t:"How to Do Dumbbell Lateral Raises"},
+  "Reverse_Flyes":{v:"xXIMFBUid3c",t:"Bent Over Dumbbell Reverse Fly"},
+  "Hammer_Curls":{v:"zC3nLlEvin4",t:"How To: Dumbbell Hammer Curl"},
+  "Split_Squat_with_Dumbbells":{v:"Wcmg-3iHwjQ",t:"Dumbbell Split Squat"},
+  "Stiff-Legged_Dumbbell_Deadlift":{v:"KE2A7G_nDc8",t:"Dumbbell Stiff Leg Deadlift Tutorial"},
+  "Dumbbell_Step_Ups":{v:"DxUNi119Qzs",t:"How To Do A Dumbbell Step Up"},
+  "Standing_Dumbbell_Calf_Raise":{v:"wwy3BSUjlW4",t:"Standing Dumbbell Calf Raise"},
+  "Russian_Twist":{v:"p_dPOhhgovg",t:"How to Do Russian Twist with Dumbbell"},
+  "Rope_Jumping":{v:"_UTR1VWg8WY",t:"How to Jump Rope for Beginners"},
+  "Mountain_Climbers":{v:"K3Xt4QH4b-U",t:"How to do Mountain Climbers Correctly"},
+  "Dumbbell_Lunges":{v:"I34ysEkPK7w",t:"Dumbbell Walking Lunge - How To"},
+  "Hamstring_Stretch":{v:"VJLA7PR1gHc",t:"How to Stretch Your Hamstrings"},
+  "Kneeling_Hip_Flexor":{v:"vp2oIc890eU",t:"Half Kneeling Hip Flexor and Quad Stretch"},
+  "All_Fours_Quad_Stretch":{v:"dLnIM3KDReo",t:"How To Do A Kneeling Quad Stretch"},
+  "Shoulder_Stretch":{v:"uNmWSg705JA",t:"How To Do A Cross Body Shoulder Stretch"},
+  "Calf_Stretch_Hands_Against_Wall":{v:"DkCcPR1XYnI",t:"The Correct Way to Stretch Your Calf"},
+  "Cat_Stretch":{v:"Fa4ZMS5M7xA",t:"How to Do Cat-Cow Stretch"},
+  "Childs_Pose":{v:"C2-1aI_KRxQ",t:"Child's Pose Stretch for Back, Hips & Shoulders"}
+};
 
 /* ---------- exercise library ---------- */
 const GEAR={body:['body only','none'],db:['dumbbell'],bar:['barbell','e-z curl bar'],other:['other','bands','kettlebells','exercise ball','medicine ball','foam roll'],gym:['cable','machine']};
@@ -169,7 +204,7 @@ function renderSheet(){
     <div class="row spread" style="align-items:flex-start;margin-bottom:10px"><div style="min-width:0"><div class="eyebrow">${esc(x.c)} · ${esc(x.l)}</div><h2 id="sheet-title">${esc(x.n)}</h2></div>
       <button class="btn ghost small" data-act="sheet-close" aria-label="Close">Close</button></div>
     ${VIDEOS[x.i]?(sheet.video?`<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(VIDEOS[x.i].v)}?rel=0&playsinline=1&autoplay=1" title="${esc(x.n)} form video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
-      <p class="muted" style="font-size:.82rem;margin:6px 0 12px">${navigator.onLine===false?'You’re offline, so the video can’t play. The photos and steps below still work.':`Video: ${esc(VIDEOS[x.i].t)}`}</p>`
+      <p class="muted" style="font-size:.82rem;margin:6px 0 12px">${navigator.onLine===false?'You’re offline, so the video can’t play. The photos and steps below still work.':`${esc(VIDEOS[x.i].t)} · <a href="https://www.youtube.com/watch?v=${encodeURIComponent(VIDEOS[x.i].v)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Won’t play? Open in YouTube</a>`}</p>`
       :`<button class="btn playvid" data-act="video"><span class="tri" aria-hidden="true"></span>Watch the form video</button>`):''}
     <div class="demo">${demo}</div>
     ${imgs&&imgs.length>1?`<div class="row" style="margin-top:8px;gap:8px"><button class="btn ghost small" data-act="demo-play">${play?'Pause':'Play'}</button><span class="muted" style="font-size:.82rem">Alternates the start and end positions</span></div>`:''}
