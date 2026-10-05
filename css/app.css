@@ -92,7 +92,7 @@ td.r,th.r{text-align:right}
 .dots{display:flex;gap:6px}.dots i{width:22px;height:8px;border-radius:4px;background:var(--line)}.dots i.on{background:var(--good)}
 .quick{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;border-color:var(--accent)}
 .btn.big{padding:14px 26px;font-size:1.1rem}
-.donecard{display:flex;gap:14px;align-items:center;border-color:var(--good)}
+.donecard{display:flex;gap:14px;align-items:flex-start;border-color:var(--good)}
 .bigcheck{width:36px;height:36px;border-radius:50%;background:var(--good);display:grid;place-items:center;flex:none}
 .bigcheck::after{content:"";width:9px;height:16px;border:solid #fff;border-width:0 3px 3px 0;transform:translateY(-2px) rotate(45deg)}
 .didit{margin-top:4px;font-size:.72rem;font-weight:600;border:1px solid var(--accent);color:var(--accent);background:none;border-radius:999px;padding:2px 8px;cursor:pointer}
@@ -146,6 +146,33 @@ ol.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:8px;
 .video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .playvid{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-bottom:12px;padding:12px}
 .playvid .tri{width:0;height:0;border-style:solid;border-width:7px 0 7px 12px;border-color:transparent transparent transparent currentColor}
+/* how it felt, personal bests, swaps, photos, recap */
+.feel{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:.9rem}
+.feel span{margin-right:4px;font-weight:600}
+.tag.pb{color:var(--hot);border-color:var(--hot)}
+.medal.pb{background:var(--hot)}
+.medal.pb::after{content:"PB";border:0;transform:none;width:auto;height:auto;color:#fff;font:700 1.5rem/1 var(--display);letter-spacing:.04em}
+.cel-sep{border:0;border-top:1px solid var(--line);margin:16px 0}
+.prlist{list-style:none;padding:0;margin:10px 0 0;text-align:left;display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+.prlist li{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.swaprow{cursor:default}
+.swaprow:hover{background:none}
+.swapname{background:none;border:0;padding:0;text-align:left;cursor:pointer;min-width:0;flex:1}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.compare figure{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+.compare select{width:100%}
+.cmpimg{padding:0;border:0;background:var(--line);border-radius:8px;overflow:hidden;cursor:pointer;aspect-ratio:3/4}
+.cmpimg img{width:100%;height:100%;object-fit:cover;display:block}
+.thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.thumb{flex:none;width:76px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden;cursor:pointer;font-size:.7rem;color:var(--muted)}
+.thumb img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block}
+.thumb span{display:block;padding:2px 0}
+.recapgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px;margin-top:12px}
+.recapgrid div{display:flex;flex-direction:column;font-size:.78rem;color:var(--muted)}
+.recapgrid .num{font:700 1.7rem/1.05 var(--display);color:var(--ink)}
+.recapgrid small{font-size:.9rem;color:var(--muted)}
+.recapgrid .delta{color:var(--ink);font:500 .78rem var(--mono)}
+.btn:disabled{opacity:.4;cursor:default}
 @media (max-width:560px){
   input[type=text],input[type=search],input[type=number],input[type=date],select{font-size:16px}
   .wrap{padding-block:16px calc(84px + env(safe-area-inset-bottom,0px))}

@@ -188,11 +188,13 @@ function viewLibrary(){
     </div>
   </section>`;
 }
-function openSheet(id){sheet={id};renderSheet();
+function openSheet(id,back){sheet={id,back};renderSheet();
   imagesFor(id).then(imgs=>{if(!sheet||sheet.id!==id)return;sheet.imgs=imgs;renderSheet()});}
 function closeSheet(){sheet=null;clearInterval(renderSheet.timer);$('#sheet').innerHTML='';document.body.style.overflow=''}
 function renderSheet(){
   clearInterval(renderSheet.timer);
+  if(sheet.swap) return renderSwap();
+  if(sheet.photo) return renderPhoto();
   const x=EXBY[sheet.id]; if(!x) return closeSheet();
   const imgs=sheet.imgs, play=sheet.play!==false;
   const demo=imgs===undefined?`<div class="ph">Loading demonstration…</div>`:imgs.length?
@@ -202,7 +204,7 @@ function renderSheet(){
   const yt='https://www.youtube.com/results?search_query='+encodeURIComponent(x.n+' exercise proper form');
   $('#sheet').innerHTML=`<div class="sheet-scrim" data-act="sheet-close"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <div class="row spread" style="align-items:flex-start;margin-bottom:10px"><div style="min-width:0"><div class="eyebrow">${esc(x.c)} · ${esc(x.l)}</div><h2 id="sheet-title">${esc(x.n)}</h2></div>
-      <button class="btn ghost small" data-act="sheet-close" aria-label="Close">Close</button></div>
+      <span class="row" style="gap:6px;flex-wrap:nowrap">${sheet.back?`<button class="btn ghost small" data-act="sheet-back">Back</button>`:''}<button class="btn ghost small" data-act="sheet-close" aria-label="Close">Close</button></span></div>
     ${VIDEOS[x.i]?(sheet.video?`<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(VIDEOS[x.i].v)}?rel=0&playsinline=1&autoplay=1" title="${esc(x.n)} form video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
       <p class="muted" style="font-size:.82rem;margin:6px 0 12px">${navigator.onLine===false?'You’re offline, so the video can’t play. The photos and steps below still work.':`${esc(VIDEOS[x.i].t)} · <a href="https://www.youtube.com/watch?v=${encodeURIComponent(VIDEOS[x.i].v)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Won’t play? Open in YouTube</a>`}</p>`
       :`<button class="btn playvid" data-act="video"><span class="tri" aria-hidden="true"></span>Watch the form video</button>`):''}
@@ -212,7 +214,7 @@ function renderSheet(){
     <h3 style="margin:16px 0 8px;font-size:1rem">How to do it</h3>
     <ol class="steps">${x.t.map(s=>`<li>${esc(s)}</li>`).join('')}</ol>
     <p style="margin:14px 0 0"><a href="${yt}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">${VIDEOS[x.i]?'More videos on YouTube':'Watch video demonstrations on YouTube'}</a></p>
-    ${readOnly||!plan.templates.length?'':`<div class="card" style="margin-top:18px"><div class="row" style="gap:8px"><label for="addto" class="muted" style="font-size:.9rem">Add to</label><select id="addto" style="flex:1">${opts}</select><button class="btn" data-act="sheet-add">Add exercise</button></div></div>`}
+    ${readOnly||sheet.back||!plan.templates.length?'':`<div class="card" style="margin-top:18px"><div class="row" style="gap:8px"><label for="addto" class="muted" style="font-size:.9rem">Add to</label><select id="addto" style="flex:1">${opts}</select><button class="btn" data-act="sheet-add">Add exercise</button></div></div>`}
   </div></div>`;
   document.body.style.overflow='hidden';
   if(imgs&&imgs.length>1&&play&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
@@ -259,9 +261,10 @@ async function finishWorkout(){
   const doneSets=draft.exercises.reduce((a,e)=>a+e.sets.filter(s=>s.done).length,0);
   if(!doneSets){toast('Tick off at least one set first');return}
   const entry={...draft,volume:volumeOf(draft),doneSets,finishedAt:Date.now()};
+  const prs=findPRs(entry,logs); if(prs.length) entry.prs=prs.map(p=>p.name);
   if(mode==='db'){try{await logsCol.add(entry)}catch(e){if(!onWriteErr(e))return}}
   if(mode==='local'){entry.id=uid4();logs=[entry,...logs];lsSet('rp.logs',logs)}
-  draft=null;saveDraft();timer=null;tick();toast(`Logged ${entry.name}: ${doneSets} ${doneSets===1?'set':'sets'}`);tab='progress';render();checkMilestones(true);
+  draft=null;saveDraft();timer=null;tick();showSets=false;toast(`Logged ${entry.name}: ${doneSets} ${doneSets===1?'set':'sets'}`);render();scrollTo(0,0);celebrateAfterLog(prs);
 }
 
 function phaseInfo(){
@@ -292,12 +295,13 @@ async function logPlanned(tid,date,fromDraft){
   const entry={...JSON.parse(JSON.stringify(src)),date,asPlanned:true,finishedAt:Date.now()};
   entry.exercises.forEach(e=>e.sets.forEach(s=>s.done=true));
   entry.volume=volumeOf(entry);entry.doneSets=entry.exercises.reduce((a,e)=>a+e.sets.length,0);
+  const prs=findPRs(entry,logs); if(prs.length) entry.prs=prs.map(p=>p.name);
   if(mode==='db'){try{await logsCol.add(entry)}catch(e){if(!onWriteErr(e))return false}}
   if(mode==='local'){entry.id=uid4();logs=[entry,...logs].sort((a,b)=>b.date.localeCompare(a.date));lsSet('rp.logs',logs)}
   if(date===todayIso()&&draft&&draft.templateId===tid){draft=null;saveDraft()}
   const p=phaseInfo();
   toast(p&&p.ready?`Logged ${entry.name}. Restart phase complete!`:`Logged ${entry.name}. Nice work.`);
-  setTimeout(()=>checkMilestones(true),50);
+  celebrateAfterLog(prs);
   return true;
 }
 
@@ -361,9 +365,9 @@ function sortedLogs(){return logs.slice().sort((a,b)=>b.date.localeCompare(a.dat
 function nudgeFor(te){
   const m=measureOf(te); if(!te||m==='mins') return null;
   const skip=lsGet('rp.nudgeSkip',[]); if(skip.includes(`${te.id}:${te.weight}:${te.reps}`)) return null;
-  const hits=[]; for(const l of sortedLogs()){const e=l.exercises.find(x=>x.name===te.name);if(!e)continue;hits.push(e);if(hits.length===2)break}
-  if(hits.length<2) return null;
-  const ok=hits.every(e=>e.sets.length>=+te.sets&&e.sets.every(s=>s.done&&+s.reps>=+te.reps&&(m!=='reps'||+s.weight>=+te.weight)));
+  const hits=[]; for(const l of sortedLogs()){const e=l.exercises.find(x=>x.name===te.name);if(!e)continue;hits.push([l,e]);if(hits.length===2)break}
+  if(hits.length<2||hits[0][0].feel!=='easy'||hits.some(([l])=>l.feel==='hard')) return null;
+  const ok=hits.every(([,e])=>e.sets.length>=+te.sets&&e.sets.every(s=>s.done&&+s.reps>=+te.reps&&(m!=='reps'||+s.weight>=+te.weight)));
   if(!ok) return null;
   if(m==='secs') return {field:'reps',to:+te.reps+10,label:`${+te.reps+10} seconds`};
   if(+te.weight>0){const to=+te.weight+(plan.unit==='lb'?5:2);return {field:'weight',to,label:`${fmt(to)} ${plan.unit}`}}
@@ -371,7 +375,7 @@ function nudgeFor(te){
 }
 function nudgeHtml(t,te){
   const n=te&&nudgeFor(te); if(!n) return '';
-  return `<div class="nudge" data-tid="${esc(t.id)}" data-eid="${esc(te.id)}"><span>Hit every rep twice. <b>Try ${esc(n.label)}</b></span>
+  return `<div class="nudge" data-tid="${esc(t.id)}" data-eid="${esc(te.id)}"><span>Every rep done twice and it felt easy. <b>Try ${esc(n.label)}</b></span>
     <span class="row" style="gap:6px"><button class="btn small" data-act="bump">Use it</button><button class="link" data-act="bump-skip">Not yet</button></span></div>`;
 }
 function bump(tid,eid){
@@ -403,15 +407,12 @@ function milestones(){
     ['w100','100 workouts','A hundred sessions. Serious work.',total,100]]
     .map(([id,name,desc,val,target])=>({id,name,desc,val:Math.min(val,target),target,done:val>=target}));
 }
-function checkMilestones(celebrate){
-  const done=milestones().filter(m=>m.done), seen=lsGet('rp.ms',null);
-  if(!seen||!celebrate){lsSet('rp.ms',[...new Set([...(seen||[]),...done.map(m=>m.id)])]);return}
-  const fresh=done.filter(m=>!seen.includes(m.id)); if(!fresh.length) return;
-  lsSet('rp.ms',[...seen,...fresh.map(m=>m.id)]);
-  const m=fresh.at(-1), c=$('#celebrate');
-  c.innerHTML=`<div class="sheet-scrim center" data-act="cel-close"><div class="cel" role="dialog" aria-modal="true" aria-labelledby="cel-t"><div class="medal" aria-hidden="true"></div>
-    <div class="eyebrow">Milestone unlocked</div><h2 id="cel-t">${esc(m.name)}</h2><p class="muted" style="margin:6px 0 16px">${esc(m.desc)}</p><button class="btn" data-act="cel-close">Keep going</button></div></div>`;
-  beep(2);
+// Milestones already reached when the app opens are marked as seen, so only new ones get celebrated.
+function checkMilestones(){lsSet('rp.ms',[...new Set([...lsGet('rp.ms',[]),...milestones().filter(m=>m.done).map(m=>m.id)])])}
+function newMilestones(){
+  const seen=lsGet('rp.ms',[]), fresh=milestones().filter(m=>m.done&&!seen.includes(m.id));
+  if(fresh.length) lsSet('rp.ms',[...seen,...fresh.map(m=>m.id)]);
+  return fresh;
 }
 function nextMilestone(){return milestones().find(m=>!m.done)}
 function milestonesCard(){
@@ -419,6 +420,169 @@ function milestonesCard(){
   return `<div class="card"><div class="row spread" style="margin-bottom:10px"><div class="eyebrow">Milestones · ${ms.filter(m=>m.done).length} of ${ms.length}</div>${next?`<span class="muted" style="font-size:.85rem">Next: ${esc(next.name)}, ${next.val} of ${next.target}</span>`:''}</div>
     <div class="badges">${ms.map(m=>`<div class="badge ${m.done?'on':''}" title="${esc(m.desc)}"><span class="medal sm" aria-hidden="true"></span><b>${esc(m.name)}</b>
       <span class="muted">${m.done?'Done':`${m.val} of ${m.target}`}</span></div>`).join('')}</div></div>`;
+}
+
+/* ---------- how it felt + personal bests ---------- */
+const FEEL={easy:'Easy',ok:'OK',hard:'Hard'};
+function feelPrompt(l){
+  if(!l) return '';
+  if(l.feel) return `<div class="muted" style="font-size:.85rem;margin-top:4px">Felt ${l.feel==='ok'?'OK':l.feel} · <button class="link" data-act="feel-clear" data-id="${esc(l.id)}" style="padding:0">Change</button></div>`;
+  return `<div class="feel"><span>How did it feel?</span>${Object.entries(FEEL).map(([k,v])=>`<button class="chip" data-act="feel" data-id="${esc(l.id)}" data-feel="${k}">${v}</button>`).join('')}</div>
+    <div class="muted" style="font-size:.78rem;margin-top:4px">Easy sessions unlock suggestions to go heavier.</div>`;
+}
+function exStats(e){
+  const done=e.sets.filter(s=>s.done); if(!done.length) return null;
+  const m=measureOf(e), maxW=Math.max(...done.map(s=>+s.weight||0));
+  if(m==='reps'&&maxW>0) return {kind:'w',w:maxW,r:Math.max(...done.filter(s=>(+s.weight||0)===maxW).map(s=>+s.reps||0))};
+  return {kind:m,r:Math.max(...done.map(s=>+s.reps||0))};
+}
+// Compares a new log against everything logged before it. The first time you do an exercise isn't a personal best.
+function findPRs(entry,prior){
+  const out=[];
+  entry.exercises.forEach(e=>{
+    const cur=exStats(e); if(!cur) return; let best=null;
+    prior.forEach(l=>l.exercises.forEach(p=>{if(p.name!==e.name)return;const s=exStats(p);if(!s||s.kind!==cur.kind)return;
+      if(!best||(s.kind==='w'?s.w>best.w||(s.w===best.w&&s.r>best.r):s.r>best.r))best=s}));
+    if(!best) return;
+    const u=cur.kind==='secs'?'sec':cur.kind==='mins'?'min':'reps';
+    if(cur.kind==='w'){
+      if(cur.w>best.w) out.push({name:e.name,text:`${fmt(cur.w)} ${plan.unit} × ${cur.r}`,was:`${fmt(best.w)} ${plan.unit}`});
+      else if(cur.w===best.w&&cur.r>best.r) out.push({name:e.name,text:`${fmt(cur.w)} ${plan.unit} × ${cur.r}`,was:`${best.r} reps`});
+    }else if(cur.r>best.r) out.push({name:e.name,text:`${cur.r} ${u}`,was:`${best.r} ${u}`});
+  });
+  return out;
+}
+function celebrateAfterLog(prs){
+  const ms=newMilestones(); if(!prs.length&&!ms.length) return;
+  const parts=[];
+  if(prs.length) parts.push(`<div class="eyebrow">${prs.length>1?`${prs.length} new personal bests`:'New personal best'}</div>`+(prs.length===1
+    ?`<h2 id="cel-t">${esc(prs[0].name)}</h2><p class="muted" style="margin:6px 0 0"><b class="num" style="color:var(--ink)">${esc(prs[0].text)}</b>, up from ${esc(prs[0].was)}</p>`
+    :`<h2 id="cel-t">Stronger than ever</h2><ul class="prlist">${prs.map(p=>`<li><b>${esc(p.name)}</b><span><span class="num">${esc(p.text)}</span> <span class="muted">was ${esc(p.was)}</span></span></li>`).join('')}</ul>`));
+  if(ms.length){const m=ms.at(-1);parts.push(`<div class="eyebrow">Milestone unlocked</div><h2 ${prs.length?'':'id="cel-t"'}>${esc(m.name)}</h2><p class="muted" style="margin:6px 0 0">${esc(m.desc)}</p>`)}
+  $('#celebrate').innerHTML=`<div class="sheet-scrim center" data-act="cel-close"><div class="cel" role="dialog" aria-modal="true" aria-labelledby="cel-t"><div class="medal${prs.length?' pb':''}" aria-hidden="true"></div>
+    ${parts.join('<hr class="cel-sep">')}<button class="btn" data-act="cel-close" style="margin-top:18px">Keep going</button></div></div>`;
+  beep(2);
+}
+
+/* ---------- swap an exercise ---------- */
+const kindOf=c=>c==='stretching'?'stretch':c==='cardio'||c==='plyometrics'?'cardio':c==='strength'?'strength':'other';
+function alternatives(libId){
+  const x=EXBY[libId]; if(!x) return [];
+  const gear=new Set([...['body','db','bar'].flatMap(k=>GEAR[k]),x.e]), k=kindOf(x.c), m=x.p[0];
+  const inWorkout=new Set((draft?.exercises||[]).map(e=>e.lib));
+  const rank=y=>(y.e===x.e?0:1)+(y.l==='beginner'?0:1.5)+(y.p[0]===m?0:2)+(VIDEOS[y.i]?-.5:0);
+  return EX.filter(y=>y.i!==x.i&&!inWorkout.has(y.i)&&kindOf(y.c)===k&&y.l!=='expert'&&gear.has(y.e)&&y.p.includes(m))
+    .sort((a,b)=>rank(a)-rank(b)||a.n.localeCompare(b.n)).slice(0,15);
+}
+const gearName=e=>e==='none'||e==='body only'?'bodyweight':e;
+function renderSwap(){
+  const e=draft&&draft.exercises[sheet.swap.ei]; if(!e) return closeSheet();
+  const alts=alternatives(e.lib);
+  $('#sheet').innerHTML=`<div class="sheet-scrim" data-act="sheet-close"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="row spread" style="align-items:flex-start;margin-bottom:6px"><div style="min-width:0"><div class="eyebrow">Swap ${esc(e.name)}</div><h2 id="sheet-title">Pick an alternative</h2></div>
+      <button class="btn ghost small" data-act="sheet-close" aria-label="Close">Close</button></div>
+    <p class="muted" style="margin:0 0 12px;font-size:.88rem">Same muscles, and it works with your equipment. <b>Today</b> swaps it for this workout only. <b>Always</b> changes your plan.</p>
+    ${alts.length?`<div class="results">${alts.map(y=>`<div class="res swaprow"><button class="swapname" data-swapopen="${esc(y.i)}"><span class="nm">${esc(y.n)}</span><br>
+        <span class="meta">${esc(cap(y.p.join(', ')))} · ${esc(gearName(y.e))} · ${esc(y.l)}</span></button>
+        <span class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn ghost small" data-act="swap-today" data-lib="${esc(y.i)}">Today</button><button class="btn small" data-act="swap-always" data-lib="${esc(y.i)}">Always</button></span></div>`).join('')}</div>`
+      :`<div class="empty">No close matches with your equipment. Try searching the Library tab.</div>`}
+  </div></div>`;
+  document.body.style.overflow='hidden';
+}
+function doSwap(libId,always){
+  const e=draft&&draft.exercises[sheet.swap.ei], y=EXBY[libId]; if(!e||!y) return;
+  const t=tmplById(draft.templateId), te=t&&(t.exercises.find(x=>x.id===e.eid)||t.exercises.find(x=>x.name===e.name)), old=e.name;
+  if(always&&te){te.name=y.n;te.lib=y.i;savePlan()}
+  e.name=y.n;e.lib=y.i;if(!always||!te)e.eid=null;
+  saveDraft();closeSheet();keepScroll(render);
+  toast(always&&te?`${y.n} replaces ${old} in ${t.name}`:`Swapped ${old} for ${y.n} today`);
+}
+
+/* ---------- progress photos (kept in IndexedDB on the phone) ---------- */
+let photos=[], cmp={a:null,b:null};
+const photoDb=()=>photoDb.p||(photoDb.p=new Promise((res,rej)=>{const r=indexedDB.open('rep-planner',1);
+  r.onupgradeneeded=()=>r.result.createObjectStore('photos',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>{photoDb.p=null;rej(r.error)}}));
+function photoStore(mode,fn){return photoDb().then(db=>new Promise((res,rej)=>{const tx=db.transaction('photos',mode),req=fn(tx.objectStore('photos'));
+  tx.oncomplete=()=>res(req&&req.result);tx.onerror=tx.onabort=()=>rej(tx.error)}))}
+async function loadPhotos(){
+  let all=[];try{all=await photoStore('readonly',s=>s.getAll())||[]}catch{}
+  photos.forEach(p=>URL.revokeObjectURL(p.url));
+  photos=all.filter(p=>p&&p.blob).map(p=>({id:p.id,date:p.date,blob:p.blob,url:URL.createObjectURL(p.blob)})).sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
+}
+async function shrinkPhoto(file){
+  const url=URL.createObjectURL(file);
+  try{const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url});
+    const k=Math.min(1,1280/Math.max(img.naturalWidth,img.naturalHeight)), c=document.createElement('canvas');
+    c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    return await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(0),'image/jpeg',.82));
+  }finally{URL.revokeObjectURL(url)}
+}
+async function addPhoto(file){
+  try{const blob=await shrinkPhoto(file), rec={id:Date.now().toString(36)+uid4().slice(0,3),date:todayIso(),blob};
+    await photoStore('readwrite',s=>s.put(rec));await loadPhotos();cmp.b=rec.id;toast('Photo saved on this phone');keepScroll(render);
+  }catch{toast('Couldn’t save that photo')}
+}
+const photoLabel=p=>{const same=photos.filter(x=>x.date===p.date);return shortDate(p.date)+(same.length>1?` (${same.indexOf(p)+1})`:'')};
+function photosCard(){
+  const ps=photos, a=ps.find(p=>p.id===cmp.a)||ps[0], b=ps.find(p=>p.id===cmp.b)||ps.at(-1);
+  const opts=sel=>ps.map(p=>`<option value="${esc(p.id)}" ${p.id===sel?'selected':''}>${esc(photoLabel(p))}</option>`).join('');
+  return `<div class="card"><div class="row spread" style="margin-bottom:10px"><h2 style="font-size:1.2rem">Progress photos</h2>
+      <label class="btn small" for="photoin" style="cursor:pointer">Add photo</label><input type="file" id="photoin" accept="image/*" hidden></div>
+    ${ps.length>=2?`<div class="compare">${[['cmpA',a,'Before'],['cmpB',b,'After']].map(([id,p,l])=>`<figure><select id="${id}" aria-label="${l} photo">${opts(p.id)}</select>
+      <button class="cmpimg" data-photo="${esc(p.id)}"><img src="${p.url}" alt="Progress photo from ${esc(photoLabel(p))}"></button></figure>`).join('')}</div>`:''}
+    ${ps.length?`<div class="thumbs" aria-label="All photos">${ps.slice().reverse().map(p=>`<button class="thumb" data-photo="${esc(p.id)}" aria-label="Photo from ${esc(photoLabel(p))}"><img src="${p.url}" alt=""><span>${esc(photoLabel(p))}</span></button>`).join('')}</div>`
+      :`<div class="empty">Take a photo every 2 to 4 weeks in the same spot, light and pose. Side by side, changes are easier to see than in the mirror.</div>`}
+    <p class="muted" style="font-size:.8rem;margin:10px 0 0">Photos stay on this phone. They're included when you save a backup.</p></div>`;
+}
+function renderPhoto(){
+  const p=photos.find(x=>x.id===sheet.photo); if(!p) return closeSheet();
+  $('#sheet').innerHTML=`<div class="sheet-scrim" data-act="sheet-close"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="row spread" style="margin-bottom:10px"><h2 id="sheet-title">${esc(parseIso(p.date).toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}))}</h2>
+      <button class="btn ghost small" data-act="sheet-close" aria-label="Close">Close</button></div>
+    <img src="${p.url}" alt="Progress photo" style="width:100%;border-radius:10px;display:block">
+    <div class="row" style="margin-top:12px">${sheet.confirm?`<span class="confirm">Delete this photo? <button class="btn small" data-act="photo-del-yes">Delete</button><button class="link" data-act="photo-del-no">Keep</button></span>`
+      :`<button class="link" data-act="photo-del">Delete photo</button>`}</div></div></div>`;
+  document.body.style.overflow='hidden';
+}
+const blobToDataUrl=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b)});
+
+/* ---------- weekly recap ---------- */
+let recapOff=0;
+function bodyWeightOn(date){const b=body.filter(x=>x.weight!=null&&x.weight!==''&&x.date<=date).sort((a,c)=>c.date.localeCompare(a.date))[0];return b?{v:+b.weight,date:b.date}:null}
+function weekRecap(off){
+  const wk=monday(new Date());wk.setDate(wk.getDate()+7*off);
+  const start=iso(wk), e=new Date(wk);e.setDate(e.getDate()+6);const end=iso(e);
+  const prev=new Date(wk);prev.setDate(prev.getDate()-1);
+  const ls=logs.filter(l=>l.date>=start&&l.date<=end), w1=bodyWeightOn(iso(prev)), w2=bodyWeightOn(end);
+  return {start,end,n:ls.length,sets:ls.reduce((a,l)=>a+(l.doneSets||0),0),vol:ls.reduce((a,l)=>a+(l.volume||0),0),
+    prs:ls.reduce((a,l)=>a+(l.prs?.length||0),0),easy:ls.filter(l=>l.feel==='easy').length,hard:ls.filter(l=>l.feel==='hard').length,
+    weight:w2&&w2.date>=start?w2.v:null,delta:w2&&w1&&w2.date>=start?w2.v-w1.v:null};
+}
+function recapCard(off,{title,dismiss,nav}={}){
+  const r=weekRecap(off), hit=r.n>=plan.goal, streak=weekStreak();
+  const label=title||(off===0?'This week':off===-1?'Last week':`Week of ${shortDate(r.start)}`);
+  const line=hit?`Weekly goal hit.${streak>1&&(off===0||(off===-1&&weekRecap(0).n<plan.goal))?` That's ${streak} goal weeks in a row.`:''}`
+    :off===0&&new Date().getDay()!==0?`${plan.goal-r.n} more workout${plan.goal-r.n===1?'':'s'} to hit your goal.`:`${r.n} of ${plan.goal} workouts. Every week is a fresh start.`;
+  const feel=r.easy||r.hard?` ${r.easy?`${r.easy} felt easy`:''}${r.easy&&r.hard?', ':''}${r.hard?`${r.hard} felt hard`:''}.`:'';
+  const first=logs.length?monday(parseIso(logs.reduce((m,l)=>l.date<m?l.date:m,logs[0].date))):monday(new Date());
+  const canBack=nav&&parseIso(r.start)>first;
+  return `<div class="card recap"><div class="row spread"><div><div class="eyebrow">${shortDate(r.start)} to ${shortDate(r.end)}</div><h2 style="font-size:1.25rem">${esc(label)}</h2></div>
+      ${nav?`<span class="row" style="gap:4px"><button class="btn ghost small" data-act="recap-prev" ${canBack?'':'disabled'} aria-label="Previous week">‹</button><button class="btn ghost small" data-act="recap-next" ${off<0?'':'disabled'} aria-label="Next week">›</button></span>`:''}</div>
+    <div class="recapgrid">
+      <div><span class="num">${r.n}<small>/${plan.goal}</small></span>workouts</div>
+      <div><span class="num">${r.sets}</span>sets</div>
+      <div><span class="num">${r.vol>=10000?fmt(r.vol/1000)+'k':fmt(r.vol)}</span>${esc(plan.unit)} lifted</div>
+      <div><span class="num">${r.prs}</span>personal best${r.prs===1?'':'s'}</div>
+      ${r.weight!=null?`<div><span class="num">${fmt(r.weight)}</span>${esc(plan.unit)} body weight${r.delta!=null?`<b class="delta">${r.delta>0?'+':''}${fmt(r.delta)} this week</b>`:''}</div>`:''}
+    </div>
+    <p style="margin:10px 0 0;font-size:.92rem">${line}${feel}</p>
+    ${dismiss?`<div class="row" style="margin-top:10px"><button class="link" data-act="recap-seen" data-week="${esc(r.start)}" style="padding:0">Got it</button></div>`:''}</div>`;
+}
+function todayRecap(){
+  const d=new Date().getDay();
+  if(d===0&&logs.length) return recapCard(0,{title:'Your week'});
+  if(d===1){const r=weekRecap(-1);if(r.n&&lsGet('rp.recapSeen','')!==r.start)return recapCard(-1,{title:'Your week recap',dismiss:true})}
+  return '';
 }
 
 /* ---------- views ---------- */
@@ -442,7 +606,7 @@ function viewToday(){
       <div class="row spread"><div class="eyebrow">${done} of ${total} sets done${vol?` · ${fmt(vol)} ${esc(plan.unit)} lifted`:''}</div>
         <label class="row" style="gap:6px;font-size:.85rem"><span class="muted">Rest timer</span><select id="restsel">${REST_CHOICES.map(([v,l])=>`<option value="${v}" ${restSecs()===v?'selected':''}>${l}</option>`).join('')}</select></label></div>
       <div class="donebar" style="margin:8px 0 6px"><i style="width:${total?done/total*100:0}%"></i></div>
-      ${draft.exercises.map((e,ei)=>{const m=measureOf(e), te=t.exercises.find(x=>x.id===e.eid)||t.exercises.find(x=>x.name===e.name);return `<div class="ex"><h3>${esc(e.name)}${e.lib&&EXBY[e.lib]?`<button class="howto" data-open="${esc(e.lib)}">How to</button>`:''}</h3>
+      ${draft.exercises.map((e,ei)=>{const m=measureOf(e), te=t.exercises.find(x=>x.id===e.eid)||t.exercises.find(x=>x.name===e.name);return `<div class="ex"><h3>${esc(e.name)}${e.lib&&EXBY[e.lib]?`<button class="howto" data-open="${esc(e.lib)}">How to</button><button class="howto" data-act="swap" data-ei="${ei}">Swap</button>`:''}</h3>
         ${nudgeHtml(t,te)}
         <div class="sets"><span class="hd">Set</span><span class="hd">${amountHead(m)}</span><span class="hd">${m==='reps'?esc(plan.unit):''}</span><span class="hd">Done</span>
         ${e.sets.map((s,si)=>`<span class="num muted">${si+1}</span>
@@ -459,8 +623,9 @@ function viewToday(){
       <label class="row" style="gap:8px"><span class="muted" style="font-size:.85rem">Workout</span><select id="pick">${opts}</select></label>
     </div>
     ${phaseBanner()}
+    ${todayRecap()}
     ${t&&!loggedOn(todayIso(),t.id)?warmupCard(t):''}
-    ${t?(loggedOn(todayIso(),t.id)?`<div class="card donecard"><span class="bigcheck" aria-hidden="true"></span><div><b>${esc(t.name)} done today</b><div class="muted" style="font-size:.85rem">Logged. Rest up and come back tomorrow.</div></div></div>`
+    ${t?(loggedOn(todayIso(),t.id)?`<div class="card donecard"><span class="bigcheck" aria-hidden="true"></span><div><b>${esc(t.name)} done today</b><div class="muted" style="font-size:.85rem">Logged. Rest up and come back tomorrow.</div>${feelPrompt(sortedLogs().find(l=>l.date===todayIso()&&l.templateId===t.id))}</div></div>`
       :`<div class="card quick"><div style="min-width:0"><b>Finished today's workout?</b><div class="muted" style="font-size:.85rem">One tap logs everything as planned. Or tick off sets below as you go.</div></div><button class="btn big" data-act="did-it">I did it</button></div>`):''}
     ${doneToday.length&&!(t&&loggedOn(todayIso(),t.id))?`<div class="muted" style="font-size:.9rem">Already logged today: ${doneToday.map(l=>esc(l.name)).join(', ')}</div>`:''}
     ${body}
@@ -529,13 +694,14 @@ function viewProgress(){
   return `<section class="stack">
     <div><div class="eyebrow">Progress</div><h2>${thisWeek>=plan.goal?'Weekly goal hit':`${plan.goal-thisWeek} more to hit this week’s goal`}</h2></div>
     <div class="stats">${stat('This week',`${thisWeek}/${plan.goal}`,thisWeek>=plan.goal)}${stat('Week streak',streak,streak>1)}${stat('Total logged',logs.length)}</div>
+    ${recapCard(recapOff,{nav:true})}
     ${milestonesCard()}
     <div class="card"><div class="eyebrow" style="margin-bottom:8px">Weekly volume, ${esc(plan.unit)} (reps × weight)</div><div class="chart">${chart(weeks,vol)}</div></div>
     ${exCard()}
     ${bestRows.length?`<div class="card"><div class="eyebrow">Best sets</div><table><thead><tr><th>Exercise</th><th class="r">${esc(plan.unit)}</th><th class="r">Reps</th><th class="r">Date</th></tr></thead><tbody>
       ${bestRows.map(([n,b])=>`<tr><td>${esc(n)}</td><td class="r num">${fmt(b.w)}</td><td class="r num">${b.r}</td><td class="r num muted">${shortDate(b.date)}</td></tr>`).join('')}</tbody></table></div>`:''}
     <div class="card"><div class="eyebrow">History</div><table><tbody>
-      ${logs.slice(0,30).map(l=>`<tr><td class="num muted" style="width:6.5em">${shortDate(l.date)}</td><td>${esc(l.name)}</td><td class="r num">${l.doneSets||0} ${l.doneSets===1?'set':'sets'}</td><td class="r num muted">${l.volume?fmt(l.volume)+' '+esc(plan.unit):''}</td>
+      ${logs.slice(0,30).map(l=>`<tr><td class="num muted" style="width:6.5em">${shortDate(l.date)}</td><td>${esc(l.name)}${l.prs?.length?` <span class="tag pb" title="${esc(l.prs.join(', '))}">PB</span>`:''}${l.feel?` <span class="tag">${FEEL[l.feel]}</span>`:''}</td><td class="r num">${l.doneSets||0} ${l.doneSets===1?'set':'sets'}</td><td class="r num muted">${l.volume?fmt(l.volume)+' '+esc(plan.unit):''}</td>
         <td class="r" style="width:1%">${confirmDel==='log:'+l.id?`<span class="confirm"><button class="btn small" data-act="dellog-yes" data-id="${esc(l.id)}">Delete</button><button class="link" data-act="cancel-confirm">Keep</button></span>`:`<button class="link" data-act="dellog" data-id="${esc(l.id)}" aria-label="Delete ${esc(l.name)} on ${esc(l.date)}">Delete</button>`}</td></tr>`).join('')}
     </tbody></table></div>
   </section>`;
@@ -562,6 +728,7 @@ function viewBody(){
         <div class="chart">${lineChart(pts,u,label)}</div>`
       :`<div class="empty">No ${esc(label.toLowerCase())} entries yet. Log one above and your chart starts here.</div>`}
     </div>
+    ${photosCard()}
     ${body.length?`<div class="card"><div class="eyebrow">History</div><div style="overflow-x:auto"><table><thead><tr><th>Date</th>${BODY_FIELDS.map(([k,l])=>`<th class="r">${l.replace('Body ','')}</th>`).join('')}<th></th></tr></thead><tbody>
       ${body.slice(0,40).map(b=>`<tr><td class="num muted" style="white-space:nowrap">${shortDate(b.date)}</td>${BODY_FIELDS.map(([k])=>`<td class="r num">${b[k]!=null&&b[k]!==''?fmt(b[k]):''}</td>`).join('')}
         <td class="r">${confirmDel==='body:'+b.date?`<span class="confirm"><button class="btn small" data-act="body-del-yes" data-date="${esc(b.date)}">Delete</button><button class="link" data-act="cancel-confirm">Keep</button></span>`:`<button class="link" data-act="body-del" data-date="${esc(b.date)}">Delete</button>`}</td></tr>`).join('')}
@@ -635,6 +802,8 @@ $('#view').addEventListener('input',e=>{
 });
 $('#view').addEventListener('change',e=>{
   const el=e.target;
+  if(el.id==='photoin'){if(el.files[0])addPhoto(el.files[0]);el.value='';return}
+  if(el.id==='cmpA'||el.id==='cmpB'){cmp[el.id==='cmpA'?'a':'b']=el.value;keepScroll(render);return}
   if(el.id==='restore'){if(el.files[0])restoreBackup(el.files[0]);el.value='';return}
   if(el.id==='exprog'){exProg=el.value;keepScroll(render);return}
   if(el.id==='lenunit'){plan.lenUnit=el.value;savePlan();keepScroll(render);return}
@@ -657,6 +826,7 @@ $('#view').addEventListener('change',e=>{
 });
 $('#view').addEventListener('click',async e=>{
   const o=e.target.closest('[data-open]');if(o){openSheet(o.dataset.open);return}
+  const ph=e.target.closest('[data-photo]');if(ph){sheet={photo:ph.dataset.photo};renderSheet();return}
   const mt=e.target.closest('[data-metric]');if(mt){bodyMetric=mt.dataset.metric;keepScroll(render);return}
   const c=e.target.closest('[data-cat],[data-gear]');
   if(c){if(c.dataset.cat){lib.cat=c.dataset.cat}else{const g=c.dataset.gear;
@@ -675,6 +845,10 @@ $('#view').addEventListener('click',async e=>{
     if(act==='bump')bump(n.dataset.tid,n.dataset.eid);
     else{const te=tmplById(n.dataset.tid)?.exercises.find(x=>x.id===n.dataset.eid);if(te)lsSet('rp.nudgeSkip',[...lsGet('rp.nudgeSkip',[]),`${te.id}:${te.weight}:${te.reps}`].slice(-200))}
     keepScroll(render);return}
+  if(act==='feel'||act==='feel-clear'){const l=logs.find(x=>x.id===b.dataset.id);if(l){if(act==='feel')l.feel=b.dataset.feel;else delete l.feel;lsSet('rp.logs',logs)}keepScroll(render);return}
+  if(act==='swap'){sheet={swap:{ei:+b.dataset.ei}};renderSheet();return}
+  if(act==='recap-prev'||act==='recap-next'){recapOff=Math.min(0,recapOff+(act==='recap-next'?1:-1));keepScroll(render);return}
+  if(act==='recap-seen'){lsSet('rp.recapSeen',b.dataset.week);keepScroll(render);return}
   if(act==='warm-start'){unlockAudio();beep(1);startWarm(0);return}
   if(act==='warm-skip'){lsSet('rp.warm',todayIso());keepScroll(render);return}
   if(act==='backup'){exportBackup();return}
@@ -712,9 +886,15 @@ $('#view').addEventListener('click',async e=>{
     if(mode==='local'){logs=logs.filter(l=>l.id!==id);lsSet('rp.logs',logs);render()}
     toast('Workout removed from history');return}
 });
-$('#sheet').addEventListener('click',e=>{
+$('#sheet').addEventListener('click',async e=>{
+  const so=e.target.closest('[data-swapopen]');if(so){const back=sheet.swap;openSheet(so.dataset.swapopen,back);return}
   const b=e.target.closest('[data-act]');
   if(!b){return}
+  const act=b.dataset.act;
+  if(act==='sheet-back'){sheet={swap:sheet.back};renderSheet();return}
+  if(act==='swap-today'||act==='swap-always'){doSwap(b.dataset.lib,act==='swap-always');return}
+  if(act==='photo-del'||act==='photo-del-no'){sheet.confirm=act==='photo-del';renderSheet();return}
+  if(act==='photo-del-yes'){const id=sheet.photo;closeSheet();try{await photoStore('readwrite',s=>s.delete(id))}catch{}await loadPhotos();keepScroll(render);toast('Photo deleted');return}
   if(b.dataset.act==='sheet-close'&&(e.target===b||b.tagName==='BUTTON')){closeSheet();return}
   if(b.dataset.act==='video'){sheet.video=true;renderSheet();return}
   if(b.dataset.act==='demo-play'){sheet.play=sheet.play===false;renderSheet();return}
@@ -737,7 +917,8 @@ draft=lsGet('rp.draft',null);
 {const u=upgradePlan(lsGet('rp.plan',null)); plan=u.plan; if(u.changed){lsSet('rp.plan',plan);draft=null}}
 logs=lsGet('rp.logs',[]);
 body=lsGet('rp.body',[]);
-setSync(); render(); checkMilestones(false);
+setSync(); render(); checkMilestones();
+loadPhotos().then(()=>{if(photos.length&&tab==='body'&&!sheet)keepScroll(render)});
 
 /* ---------- exercise library + offline ---------- */
 fetch('data/exercises.json').then(r=>r.json()).then(d=>{EX=d;EXBY=Object.fromEntries(EX.map(x=>[x.i,x]));MUSCLES=[...new Set(EX.flatMap(x=>x.p))].sort();if(!sheet)keepScroll(render)}).catch(()=>{});
@@ -745,18 +926,22 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
 try{navigator.storage?.persist?.()}catch{}
 
 /* ---------- backup ---------- */
-function backupData(){return {app:'rep-planner',version:1,exportedAt:new Date().toISOString(),plan,logs,body}}
+async function backupData(){
+  const ph=[];for(const p of photos){try{ph.push({id:p.id,date:p.date,data:await blobToDataUrl(p.blob)})}catch{}}
+  return {app:'rep-planner',version:2,exportedAt:new Date().toISOString(),plan,logs,body,photos:ph};
+}
 async function exportBackup(){
-  const name=`rep-planner-backup-${todayIso()}.json`, text=JSON.stringify(backupData(),null,1);
+  const name=`rep-planner-backup-${todayIso()}.json`, text=JSON.stringify(await backupData());
   const file=new File([text],name,{type:'application/json'});
   try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Rep Planner backup'});lsSet('rp.lastBackup',todayIso());render();return}}catch(e){if(e&&e.name==='AbortError')return}
   const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.appendChild(a);a.click();a.remove();
   lsSet('rp.lastBackup',todayIso());render();
 }
 function restoreBackup(fileObj){
-  const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.app!=='rep-planner'||!d.plan)throw 0;
+  const r=new FileReader();r.onload=async()=>{let d;try{d=JSON.parse(r.result);if(d.app!=='rep-planner'||!d.plan)throw 0}catch{toast('That file isn’t a Rep Planner backup');return}
     plan=upgradePlan(d.plan).plan;logs=Array.isArray(d.logs)?d.logs:[];body=Array.isArray(d.body)?d.body:[];
-    lsSet('rp.plan',plan);lsSet('rp.logs',logs);lsSet('rp.body',body);draft=null;saveDraft();confirmDel=null;render();toast('Backup restored')}
-    catch{toast('That file isn’t a Rep Planner backup')}};
+    lsSet('rp.plan',plan);lsSet('rp.logs',logs);lsSet('rp.body',body);draft=null;saveDraft();confirmDel=null;checkMilestones();
+    let lost=0;if(Array.isArray(d.photos))for(const p of d.photos){try{const blob=await (await fetch(p.data)).blob();await photoStore('readwrite',s=>s.put({id:p.id,date:p.date,blob}))}catch{lost++}}
+    await loadPhotos();render();toast(lost?`Backup restored, but ${lost} photo${lost===1?'':'s'} couldn’t be restored`:'Backup restored')};
   r.readAsText(fileObj);
 }
