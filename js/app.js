@@ -20,7 +20,7 @@ function buildPlan(){
     ex('Dumbbell step-up',3,10,10,'Dumbbell_Step_Ups'),ex('Dumbbell calf raise',3,15,16,'Standing_Dumbbell_Calf_Raise'),
     ex('Plank',3,45,0,'Plank','secs'),ex('Russian twist',3,20,0,'Russian_Twist')]};
   const cardio={id:'cardio',name:'Cardio',exercises:[
-    ex('Run or brisk walk',1,20,0,'Trail_Running_Walking','mins'),ex('Jump rope',5,2,0,'Rope_Jumping','mins'),ex('Mountain climbers',4,30,0,'Mountain_Climbers','secs')]};
+    ex('Run or brisk walk',1,20,0,'Trail_Running_Walking','mins'),ex('Jump rope',5,2,0,'Rope_Jumping','mins'),ex('Mountain climbers',4,30,0,'Mountain_Climbers','secs'),ex('Step-ups on the step',3,2,0,'Step-up_with_Knee_Raise','mins')]};
   const stretch={id:'stretch',name:'Stretch & mobility',exercises:[
     ex('Hamstring stretch',2,30,0,'Hamstring_Stretch','secs'),ex('Kneeling hip flexor stretch',2,30,0,'Kneeling_Hip_Flexor','secs'),ex('Quad stretch on all fours',2,30,0,'All_Fours_Quad_Stretch','secs'),
     ex('Shoulder stretch',2,30,0,'Shoulder_Stretch','secs'),ex('Calf stretch at the wall',2,30,0,'Calf_Stretch_Hands_Against_Wall','secs'),
@@ -47,10 +47,10 @@ function extraTemplates(){
       ex('Incline dumbbell press',3,10,16,'Incline_Dumbbell_Press'),ex('Overhead dumbbell extension (seated)',3,12,12,'Standing_Dumbbell_Triceps_Extension')]},
     {id:'x-pull',name:'Extra: Pull',extra:true,exercises:[
       ex('Stiff-leg dumbbell deadlift',3,8,20,'Stiff-Legged_Dumbbell_Deadlift'),ex('One-arm dumbbell row',4,8,22,'One-Arm_Dumbbell_Row'),
-      ex('Bent-over dumbbell row',3,10,16,'Bent_Over_Two-Dumbbell_Row'),ex('Preacher curl',3,12,15,'Preacher_Curl')]},
+      ex('Bent-over dumbbell row',3,10,16,'Bent_Over_Two-Dumbbell_Row'),ex('Preacher curl',3,12,15,'Preacher_Curl'),ex('Band pull-apart',3,15,0,'Band_Pull_Apart')]},
     {id:'x-legs',name:'Extra: Legs',extra:true,exercises:[
       ex('Goblet squat',4,8,20,'Goblet_Squat'),ex('Stiff-leg dumbbell deadlift',3,10,20,'Stiff-Legged_Dumbbell_Deadlift'),
-      ex('Dumbbell walking lunge',3,12,10,'Dumbbell_Lunges'),ex('Dumbbell calf raise',4,15,16,'Standing_Dumbbell_Calf_Raise')]},
+      ex('Dumbbell walking lunge',3,12,10,'Dumbbell_Lunges'),ex('Dumbbell calf raise',4,15,16,'Standing_Dumbbell_Calf_Raise'),ex('Band monster walk (steps each way)',2,10,0,'Monster_Walk')]},
     {id:'x-full',name:'Extra: Full body',extra:true,exercises:[
       ex('Goblet squat',3,12,16,'Goblet_Squat'),ex('Push-ups',3,15,0,'Pushups'),ex('One-arm dumbbell row',3,12,20,'One-Arm_Dumbbell_Row'),ex('Plank',3,45,0,'Plank','secs')]},
     {id:'x-core',name:'Extra: Core',extra:true,exercises:[
@@ -61,12 +61,20 @@ function starterPlan(){
   const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));
   const ps=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const r=restartPlan();
-  return {v:PLAN_VERSION,phase:'restart',phaseStart:ps,...r,templates:[...r.templates,...extraTemplates()],extrasAdded:true,coreAdded:true,next:buildPlan(),unit:'kg'};
+  return {v:PLAN_VERSION,phase:'restart',phaseStart:ps,...r,templates:[...r.templates,...extraTemplates()],extrasAdded:true,coreAdded:true,gearAdded:true,next:buildPlan(),unit:'kg'};
 }
 const OLD_STARTER=['Push','Pull','Legs','Full body'].join('|');
 function upgradePlan(p){
   const u=upgradePlanCore(p);
   if(!u.plan.extrasAdded){u.plan.templates=[...u.plan.templates,...extraTemplates().filter(x=>!u.plan.templates.some(t=>t.id===x.id))];u.plan.extrasAdded=true;u.plan.coreAdded=true;u.plan.v=PLAN_VERSION;u.changed=true}
+  // 2026-10-13: bands and a step joined the home gear, so existing plans get the band and step moves too.
+  if(!u.plan.gearAdded){
+    const add=(ts,id,e)=>{const t=(ts||[]).find(x=>x.id===id);if(t&&!t.exercises.some(x=>x.lib===e.lib))t.exercises.push(e)};
+    add(u.plan.templates,'x-pull',ex('Band pull-apart',3,15,0,'Band_Pull_Apart'));
+    add(u.plan.templates,'x-legs',ex('Band monster walk (steps each way)',2,10,0,'Monster_Walk'));
+    [u.plan.templates,u.plan.next?.templates].forEach(ts=>add(ts,'cardio',ex('Step-ups on the step',3,2,0,'Step-up_with_Knee_Raise','mins')));
+    u.plan.gearAdded=true;u.changed=true;
+  }
   if(!u.plan.coreAdded){const core=extraTemplates().find(x=>x.id==='x-core');if(!u.plan.templates.some(t=>t.id===core.id))u.plan.templates.push(core);u.plan.coreAdded=true;u.changed=true}
   return u;
 }
@@ -85,7 +93,8 @@ function upgradePlanCore(p){
 let body=[], bodyCol=null, bodyMetric='weight', exProg='';
 let plan=starterPlan(), logs=[], tab='today', mode='local', readOnly=false, todayPick=null, draft=null, confirmDel=null;
 let db=null, planRef=null, logsCol=null;
-let lib={q:'',cat:'all',gear:['body','db','bar'],allGear:false,muscle:'',shown:40};
+const MY_GEAR=['body','db','bar','bands'];
+let lib={q:'',cat:'all',gear:[...MY_GEAR],allGear:false,muscle:'',shown:40};
 let sheet=null, showSets=false; // {id, target}
 
 const $=s=>document.querySelector(s);
@@ -149,8 +158,8 @@ const VIDEOS={
 };
 
 /* ---------- exercise library ---------- */
-const GEAR={body:['body only','none'],db:['dumbbell'],bar:['barbell','e-z curl bar'],other:['other','bands','kettlebells','exercise ball','medicine ball','foam roll'],gym:['cable','machine']};
-const GEAR_LABEL={body:'Bodyweight',db:'Dumbbells',bar:'Bar',other:'Bands, balls & other',gym:'Cable & machine'};
+const GEAR={body:['body only','none'],db:['dumbbell'],bar:['barbell','e-z curl bar'],bands:['bands'],other:['other','kettlebells','exercise ball','medicine ball','foam roll'],gym:['cable','machine']};
+const GEAR_LABEL={body:'Bodyweight',db:'Dumbbells',bar:'Bar',bands:'Bands',other:'Balls, kettlebells & other',gym:'Cable & machine'};
 const CATS={all:null,strength:['strength','powerlifting','olympic weightlifting','strongman'],cardio:['cardio','plyometrics'],stretching:['stretching']};
 const CAT_LABEL={all:'All',strength:'Strength',cardio:'Cardio',stretching:'Stretches'};
 const CRC=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
@@ -310,7 +319,7 @@ async function logPlanned(tid,date,fromDraft){
 }
 
 /* ---------- rest timer + warm-up ---------- */
-const WARMUP=[['March or jog in place',60,null],['Arm circles, both directions',30,'Arm_Circles'],['Bodyweight squats',45,'Bodyweight_Squat'],
+const WARMUP=[['March or jog in place',60,null],['Band pull-aparts',30,'Band_Pull_Apart'],['Bodyweight squats',45,'Bodyweight_Squat'],
   ['Hip hinges, hands on hips',30,null],['Incline push-ups on the bench',45,'Incline_Push-Up'],['Cat-cow',30,'Cat_Stretch'],['Reverse lunges, alternating legs',60,null]];
 const REST_CHOICES=[[0,'Off'],[45,'45 sec'],[60,'1 min'],[90,'1:30'],[120,'2 min'],[180,'3 min']];
 let timer=null, actx=null;
@@ -493,11 +502,17 @@ function celebrateAfterLog(prs){
 const kindOf=c=>c==='stretching'?'stretch':c==='cardio'||c==='plyometrics'?'cardio':c==='strength'?'strength':'other';
 function alternatives(libId){
   const x=EXBY[libId]; if(!x) return [];
-  const gear=new Set([...['body','db','bar'].flatMap(k=>GEAR[k]),x.e]), k=kindOf(x.c), m=x.p[0];
+  const gear=new Set([...MY_GEAR.flatMap(k=>GEAR[k]),x.e]), k=kindOf(x.c), m=x.p[0];
   const inWorkout=new Set((draft?.exercises||[]).map(e=>e.lib));
-  const rank=y=>(y.e===x.e?0:1)+(y.l==='beginner'?0:1.5)+(y.p[0]===m?0:2)+(VIDEOS[y.i]?-.5:0);
-  return EX.filter(y=>y.i!==x.i&&!inWorkout.has(y.i)&&kindOf(y.c)===k&&y.l!=='expert'&&gear.has(y.e)&&y.p.includes(m))
-    .sort((a,b)=>rank(a)-rank(b)||a.n.localeCompare(b.n)).slice(0,15);
+  const STOP=new Set(['dumbbell','dumbbells','with','the','bands','band','barbell','seated','standing','one','arm','two','on','a','-','and','of','to']);
+  const words=n=>n.toLowerCase().replace(/[^a-z ]/g,' ').split(/\s+/).map(w=>w.replace(/(es|s)$/,'')).filter(w=>w.length>2&&!STOP.has(w));
+  const key=new Set(words(x.n)), gearCost={bands:0,'body only':0,none:0,dumbbell:0,barbell:1,'e-z curl bar':1};
+  const rank=y=>(y.l==='beginner'?0:1.5)+(y.p[0]===m?0:2)+(VIDEOS[y.i]?-.5:0)+(gearCost[y.e]??1)-(words(y.n).some(w=>key.has(w))?1.5:0);
+  const all=EX.filter(y=>y.i!==x.i&&!inWorkout.has(y.i)&&kindOf(y.c)===k&&y.l!=='expert'&&gear.has(y.e)&&y.p.includes(m))
+    .sort((a,b)=>rank(a)-rank(b)||a.n.localeCompare(b.n));
+  // Mostly the same equipment, but always leave room for other gear (bands, bodyweight) so there's real choice.
+  const same=all.filter(y=>y.e===x.e), other=all.filter(y=>y.e!==x.e), nOther=Math.min(other.length,Math.max(6,15-same.length));
+  return [...same.slice(0,15-nOther),...other.slice(0,nOther)];
 }
 const gearName=e=>e==='none'||e==='body only'?'bodyweight':e;
 function renderSwap(){
@@ -969,7 +984,7 @@ $('#celebrate').addEventListener('click',e=>{const b=e.target.closest('[data-act
 
 /* ---------- boot ---------- */
 tab=lsGet('rp.tab','today'); if(!['today','week','workouts','library','progress','body'].includes(tab)) tab='today';
-{const l=lsGet('rp.lib',null); if(l&&Array.isArray(l.gear)&&l.gear.length){lib.cat=CATS[l.cat]!==undefined?l.cat:'all';lib.gear=l.gear.filter(k=>GEAR[k])}}
+{const l=lsGet('rp.lib',null); if(l&&Array.isArray(l.gear)&&l.gear.length){lib.cat=CATS[l.cat]!==undefined?l.cat:'all';lib.gear=l.gear.filter(k=>GEAR[k]);if(!lsGet('rp.bandsOn',false)&&!lib.gear.includes('bands')){lib.gear.push('bands');lsSet('rp.lib',{cat:lib.cat,gear:lib.gear})}}lsSet('rp.bandsOn',true)}
 draft=lsGet('rp.draft',null);
 {const u=upgradePlan(lsGet('rp.plan',null)); plan=u.plan; if(u.changed){lsSet('rp.plan',plan);draft=null}}
 logs=lsGet('rp.logs',[]);
