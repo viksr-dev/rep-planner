@@ -391,7 +391,30 @@ function warmupCard(t){
   const total=WARMUP.reduce((a,w)=>a+w[1],0);
   return `<details class="card warm"${timer?.kind==='warm'?' open':''}><summary><span><b>Warm up first</b> <span class="muted">· ${Math.round(total/60)} min</span></span><span class="howto">Show</span></summary>
     <ol class="steps" style="margin-top:10px">${WARMUP.map(([n,secs,id])=>`<li>${esc(n)} <span class="muted num">${secs}s</span>${id?` <button class="howto" data-open="${esc(id)}">How to</button>`:''}</li>`).join('')}</ol>
-    <div class="row" style="margin-top:12px"><button class="btn" data-act="warm-start">Start warm-up timer</button><button class="link" data-act="warm-skip">Skip today</button></div></details>`;
+    <div class="row" style="margin-top:12px"><button class="btn" data-act="warm-start">Start warm-up timer</button><button class="link" data-act="warm-skip">Skip today</button></div>
+    <div class="keeprow"><span class="muted">Or follow a free warm-up in Keep</span><span class="row" style="gap:6px">${keepLink()}<button class="btn ghost small" data-act="warm-keep">Done in Keep</button></span></div></details>`;
+}
+
+/* ---------- Keep app classes ---------- */
+// Keep has no way for other apps to show its classes, so we link out to it and log the session here.
+const KEEP_URL='https://apps.apple.com/app/id1287964023';
+const keepLink=()=>`<a class="btn ghost small" href="${KEEP_URL}" target="_blank" rel="noopener">Open Keep</a>`;
+function keepCard(t){
+  const l=sortedLogs().find(x=>x.date===todayIso()&&x.keep&&x.templateId===(t?t.id:'keep'));
+  if(l) return `<div class="card donecard"><span class="bigcheck" aria-hidden="true"></span><div><b>Keep class done today</b><div class="muted" style="font-size:.85rem">${l.exercises[0]?.sets[0]?.reps||0} min logged${t?` for ${esc(t.name)}`:''}. It counts toward your week.</div>${feelPrompt(l)}</div></div>`;
+  return `<div class="card keep"><div style="min-width:0"><b>${t?'Doing a Keep class instead?':'Doing a Keep class today?'}</b><div class="muted" style="font-size:.85rem">Follow a free class in Keep, then log it here so it counts toward your week.</div></div>
+    <div class="row" style="gap:8px">${keepLink()}<label class="row" style="gap:6px;font-size:.9rem"><input type="number" inputmode="numeric" min="1" max="300" id="keepmin" value="${lsGet('rp.keepMin',20)}" aria-label="Keep class minutes"> min</label><button class="btn small" data-act="keep-log">Log it</button></div></div>`;
+}
+async function logKeep(tid){
+  const mins=Math.max(1,Math.round(+($('#keepmin')?.value)||20)); lsSet('rp.keepMin',mins);
+  const entry={date:todayIso(),templateId:tid||'keep',name:'Keep class',keep:true,exercises:[{name:'Keep class',lib:null,measure:'mins',sets:[{reps:mins,weight:0,done:true}]}],volume:0,doneSets:0,finishedAt:Date.now()};
+  if(mode==='db'){try{await logsCol.add(entry)}catch(e){if(!onWriteErr(e))return false}}
+  if(mode==='local'){entry.id=uid4();logs=[entry,...logs];lsSet('rp.logs',logs)}
+  if(tid&&draft&&draft.templateId===tid){draft=null;saveDraft()}
+  const p=phaseInfo();
+  toast(p&&p.ready?'Logged your Keep class. Restart phase complete!':`Logged a ${mins}-minute Keep class. Nice work.`);
+  celebrateAfterLog([]);
+  return true;
 }
 
 /* ---------- add-weight nudges ---------- */
@@ -462,7 +485,7 @@ function feelPrompt(l){
   if(!l) return '';
   if(l.feel) return `<div class="muted" style="font-size:.85rem;margin-top:4px">Felt ${l.feel==='ok'?'OK':l.feel} · <button class="link" data-act="feel-clear" data-id="${esc(l.id)}" style="padding:0">Change</button></div>`;
   return `<div class="feel"><span>How did it feel?</span>${Object.entries(FEEL).map(([k,v])=>`<button class="chip" data-act="feel" data-id="${esc(l.id)}" data-feel="${k}">${v}</button>`).join('')}</div>
-    <div class="muted" style="font-size:.78rem;margin-top:4px">Easy sessions unlock suggestions to go heavier.</div>`;
+    ${l.keep?'':`<div class="muted" style="font-size:.78rem;margin-top:4px">Easy sessions unlock suggestions to go heavier.</div>`}`;
 }
 function exStats(e){
   const done=e.sets.filter(s=>s.done); if(!done.length) return null;
@@ -628,7 +651,8 @@ function todayRecap(){
 /* ---------- views ---------- */
 function viewToday(){
   const now=new Date(), pick=currentPick(), t=tmplById(pick), streak=weekStreak(), nm=nextMilestone();
-  const doneToday=logs.filter(l=>l.date===todayIso());
+  const doneToday=logs.filter(l=>l.date===todayIso()), keepDone=doneToday.some(l=>l.keep&&l.templateId===(t?t.id:'keep'));
+  const keepToday=keepDone||(!(t&&loggedOn(todayIso(),t.id))&&!isStrength(t)), others=doneToday.filter(l=>!(keepDone&&l.keep&&!t));
   if(draft&&draft.date!==todayIso()) draft=null;
   if(t&&(!draft||draft.templateId!==t.id)) {draft=newDraft(t.id);saveDraft()}
   const opts=`<option value="">Rest day</option>`+tmplOptions(pick);
@@ -666,9 +690,10 @@ function viewToday(){
     ${phaseBanner()}
     ${todayRecap()}
     ${t&&!loggedOn(todayIso(),t.id)?warmupCard(t):''}
-    ${t?(loggedOn(todayIso(),t.id)?`<div class="card donecard"><span class="bigcheck" aria-hidden="true"></span><div><b>${esc(t.name)} done today</b><div class="muted" style="font-size:.85rem">Logged. Rest up and come back tomorrow.</div>${feelPrompt(sortedLogs().find(l=>l.date===todayIso()&&l.templateId===t.id))}</div></div>`
+    ${t&&!keepDone?(loggedOn(todayIso(),t.id)?`<div class="card donecard"><span class="bigcheck" aria-hidden="true"></span><div><b>${esc(t.name)} done today</b><div class="muted" style="font-size:.85rem">Logged. Rest up and come back tomorrow.</div>${feelPrompt(sortedLogs().find(l=>l.date===todayIso()&&l.templateId===t.id))}</div></div>`
       :`<div class="card quick"><div style="min-width:0"><b>Finished today's workout?</b><div class="muted" style="font-size:.85rem">One tap logs everything as planned. Or tick off sets below as you go.</div></div><button class="btn big" data-act="did-it">I did it</button></div>`):''}
-    ${doneToday.length&&!(t&&loggedOn(todayIso(),t.id))?`<div class="muted" style="font-size:.9rem">Already logged today: ${doneToday.map(l=>esc(l.name)).join(', ')}</div>`:''}
+    ${keepToday?keepCard(t):''}
+    ${others.length&&!(t&&loggedOn(todayIso(),t.id))?`<div class="muted" style="font-size:.9rem">Already logged today: ${others.map(l=>esc(l.name)).join(', ')}</div>`:''}
     ${body}
     ${nm&&logs.length?`<div class="muted" style="font-size:.88rem">Next milestone: <b>${esc(nm.name)}</b> (${nm.val} of ${nm.target})</div>`:''}
   </section>`;
@@ -742,7 +767,7 @@ function viewProgress(){
     ${bestRows.length?`<div class="card"><div class="eyebrow">Best sets</div><table><thead><tr><th>Exercise</th><th class="r">${esc(plan.unit)}</th><th class="r">Reps</th><th class="r">Date</th></tr></thead><tbody>
       ${bestRows.map(([n,b])=>`<tr><td>${esc(n)}</td><td class="r num">${fmt(b.w)}</td><td class="r num">${b.r}</td><td class="r num muted">${shortDate(b.date)}</td></tr>`).join('')}</tbody></table></div>`:''}
     <div class="card"><div class="eyebrow">History</div><table><tbody>
-      ${logs.slice(0,30).map(l=>`<tr><td class="num muted" style="width:6.5em">${shortDate(l.date)}</td><td>${esc(l.name)}${l.prs?.length?` <span class="tag pb" title="${esc(l.prs.join(', '))}">PB</span>`:''}${l.feel?` <span class="tag">${FEEL[l.feel]}</span>`:''}</td><td class="r num">${l.doneSets||0} ${l.doneSets===1?'set':'sets'}</td><td class="r num muted">${l.volume?fmt(l.volume)+' '+esc(plan.unit):''}</td>
+      ${logs.slice(0,30).map(l=>`<tr><td class="num muted" style="width:6.5em">${shortDate(l.date)}</td><td>${esc(l.name)}${l.prs?.length?` <span class="tag pb" title="${esc(l.prs.join(', '))}">PB</span>`:''}${l.feel?` <span class="tag">${FEEL[l.feel]}</span>`:''}</td><td class="r num">${l.keep?`${l.exercises[0]?.sets[0]?.reps||0} min`:`${l.doneSets||0} ${l.doneSets===1?'set':'sets'}`}</td><td class="r num muted">${l.volume?fmt(l.volume)+' '+esc(plan.unit):''}</td>
         <td class="r" style="width:1%">${confirmDel==='log:'+l.id?`<span class="confirm"><button class="btn small" data-act="dellog-yes" data-id="${esc(l.id)}">Delete</button><button class="link" data-act="cancel-confirm">Keep</button></span>`:`<button class="link" data-act="dellog" data-id="${esc(l.id)}" aria-label="Delete ${esc(l.name)} on ${esc(l.date)}">Delete</button>`}</td></tr>`).join('')}
     </tbody></table></div>
   </section>`;
@@ -922,6 +947,8 @@ $('#view').addEventListener('click',async e=>{
   if(act==='recap-seen'){lsSet('rp.recapSeen',b.dataset.week);keepScroll(render);return}
   if(act==='warm-start'){unlockAudio();beep(1);startWarm(0);return}
   if(act==='warm-skip'){lsSet('rp.warm',todayIso());keepScroll(render);return}
+  if(act==='warm-keep'){lsSet('rp.warm',todayIso());if(timer?.kind==='warm'){timer=null;tick()}toast('Warm-up done. Time to lift.');keepScroll(render);return}
+  if(act==='keep-log'){const t=tmplById(currentPick());if(await logKeep(t&&!isStrength(t)?t.id:null)){render();scrollTo(0,0)}return}
   if(act==='backup'){exportBackup();return}
   if(act==='show-sets'){showSets=true;render();return}
   if(act==='did-it'){const t=tmplById(currentPick());if(t&&await logPlanned(t.id,todayIso(),true))render();return}

@@ -92,6 +92,8 @@ td.r,th.r{text-align:right}
 .dots{display:flex;gap:6px}.dots i{width:22px;height:8px;border-radius:4px;background:var(--line)}.dots i.on{background:var(--good)}
 .quick{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;border-color:var(--accent)}
 .btn.big{padding:14px 26px;font-size:1.1rem}
+.keep{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.keeprow{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:.9rem}
 .donecard{display:flex;gap:14px;align-items:flex-start;border-color:var(--good)}
 .bigcheck{width:36px;height:36px;border-radius:50%;background:var(--good);display:grid;place-items:center;flex:none}
 .bigcheck::after{content:"";width:9px;height:16px;border:solid #fff;border-width:0 3px 3px 0;transform:translateY(-2px) rotate(45deg)}
