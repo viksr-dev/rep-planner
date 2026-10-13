@@ -52,18 +52,22 @@ function extraTemplates(){
       ex('Goblet squat',4,8,20,'Goblet_Squat'),ex('Stiff-leg dumbbell deadlift',3,10,20,'Stiff-Legged_Dumbbell_Deadlift'),
       ex('Dumbbell walking lunge',3,12,10,'Dumbbell_Lunges'),ex('Dumbbell calf raise',4,15,16,'Standing_Dumbbell_Calf_Raise')]},
     {id:'x-full',name:'Extra: Full body',extra:true,exercises:[
-      ex('Goblet squat',3,12,16,'Goblet_Squat'),ex('Push-ups',3,15,0,'Pushups'),ex('One-arm dumbbell row',3,12,20,'One-Arm_Dumbbell_Row'),ex('Plank',3,45,0,'Plank','secs')]}];
+      ex('Goblet squat',3,12,16,'Goblet_Squat'),ex('Push-ups',3,15,0,'Pushups'),ex('One-arm dumbbell row',3,12,20,'One-Arm_Dumbbell_Row'),ex('Plank',3,45,0,'Plank','secs')]},
+    {id:'x-core',name:'Extra: Core',extra:true,exercises:[
+      ex('Plank',3,30,0,'Plank','secs'),ex('Dead bug',3,10,0,'Dead_Bug'),ex('Leg raise on the bench',3,10,0,'Flat_Bench_Lying_Leg_Raise'),
+      ex('Bicycle crunch',3,16,0,'Air_Bike'),ex('Side plank (each side)',2,20,0,'Side_Bridge','secs'),ex('Superman',3,10,0,'Superman')]}];
 }
 function starterPlan(){
   const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));
   const ps=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const r=restartPlan();
-  return {v:PLAN_VERSION,phase:'restart',phaseStart:ps,...r,templates:[...r.templates,...extraTemplates()],extrasAdded:true,next:buildPlan(),unit:'kg'};
+  return {v:PLAN_VERSION,phase:'restart',phaseStart:ps,...r,templates:[...r.templates,...extraTemplates()],extrasAdded:true,coreAdded:true,next:buildPlan(),unit:'kg'};
 }
 const OLD_STARTER=['Push','Pull','Legs','Full body'].join('|');
 function upgradePlan(p){
   const u=upgradePlanCore(p);
-  if(!u.plan.extrasAdded){u.plan.templates=[...u.plan.templates,...extraTemplates().filter(x=>!u.plan.templates.some(t=>t.id===x.id))];u.plan.extrasAdded=true;u.plan.v=PLAN_VERSION;u.changed=true}
+  if(!u.plan.extrasAdded){u.plan.templates=[...u.plan.templates,...extraTemplates().filter(x=>!u.plan.templates.some(t=>t.id===x.id))];u.plan.extrasAdded=true;u.plan.coreAdded=true;u.plan.v=PLAN_VERSION;u.changed=true}
+  if(!u.plan.coreAdded){const core=extraTemplates().find(x=>x.id==='x-core');if(!u.plan.templates.some(t=>t.id===core.id))u.plan.templates.push(core);u.plan.coreAdded=true;u.changed=true}
   return u;
 }
 function upgradePlanCore(p){
@@ -95,7 +99,7 @@ const tmplById=id=>plan.templates.find(t=>t.id===id);
 function tmplOptions(sel){
   const o=t=>`<option value="${esc(t.id)}" ${t.id===sel?'selected':''}>${esc(t.name)}</option>`;
   const main=plan.templates.filter(t=>!t.extra), xs=plan.templates.filter(t=>t.extra);
-  return xs.length?`<optgroup label="Your plan">${main.map(o).join('')}</optgroup><optgroup label="Extra weight days">${xs.map(o).join('')}</optgroup>`:main.map(o).join('');
+  return xs.length?`<optgroup label="Your plan">${main.map(o).join('')}</optgroup><optgroup label="Extra days">${xs.map(o).join('')}</optgroup>`:main.map(o).join('');
 }
 const fmt=n=>Number(n||0).toLocaleString(undefined,{maximumFractionDigits:1});
 const cap=s=>s?s[0].toUpperCase()+s.slice(1):s;
@@ -309,13 +313,34 @@ async function logPlanned(tid,date,fromDraft){
 const WARMUP=[['March or jog in place',60,null],['Arm circles, both directions',30,'Arm_Circles'],['Bodyweight squats',45,'Bodyweight_Squat'],
   ['Hip hinges, hands on hips',30,null],['Incline push-ups on the bench',45,'Incline_Push-Up'],['Cat-cow',30,'Cat_Stretch'],['Reverse lunges, alternating legs',60,null]];
 const REST_CHOICES=[[0,'Off'],[45,'45 sec'],[60,'1 min'],[90,'1:30'],[120,'2 min'],[180,'3 min']];
-let timer=null, actx=null, wakeLock=null;
-// Keep the screen on while a timer runs so the beep can play (the phone pauses the app when it locks).
-function holdScreen(on){
-  if(on&&!wakeLock&&navigator.wakeLock){wakeLock='pending';
-    navigator.wakeLock.request('screen').then(l=>{if(!timer){l.release().catch(()=>{});wakeLock=null;return}
-      wakeLock=l;l.addEventListener('release',()=>{if(wakeLock===l)wakeLock=null})}).catch(()=>{wakeLock='failed'})}
-  if(!on&&wakeLock){if(wakeLock.release)wakeLock.release().catch(()=>{});wakeLock=null}
+let timer=null, actx=null;
+/* ---------- keep the screen awake ----------
+   On while a timer runs (so the beep can play) and whenever the "Keep screen awake" switch is on.
+   Uses the Wake Lock API; phones without it get a tiny silent looping video, which also stops the screen dimming. */
+let awake=lsGet('rp.awake',false), wakeLock=null, wakeVid=null;
+const AWAKE_MP4='data:video/mp4;base64,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ZWRfcmVmPTEgbWVfcmFuZ2U9MTYgY2hyb21hX21lPTEgdHJlbGxpcz0xIDh4OGRjdD0wIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS0yIHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTAgd2VpZ2h0cD0wIGtleWludD0yNTAga2V5aW50X21pbj0yIHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAC2WIhAU8mKAAP7+AARggBwEYIAcBGCAHARggBwAAAAZBmjgKeoABGCAHARggBwEYIAcBGCAHAAAABkGaVAKeoAEYIAcBGCAHARggBwEYIAcAAAAFQZpgEvUBGCAHARggBwEYIAcBGCAH';
+const AWAKE_WEBM='data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAInEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHYTbuMU6uEElTDZ1OsggEeTbuMU6uEHFO7a1OsggIR7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsirXsYMPQkBNgI1MYXZmNjAuMTYuMTAwV0GNTGF2ZjYwLjE2LjEwMESJiECfQAAAAAAAFlSua8GuAQAAAAAAADjXgQFzxYi/g6HdpzD4XJyBACK1nIN1bmSIgQCGhVZfVlA4g4EBI+ODhB3NZQDgibCBELqBEJqBAhJUw2f8c3OgY8CAZ8iaRaOHRU5DT0RFUkSHjUxhdmY2MC4xNi4xMDBzc9ZjwItjxYi/g6HdpzD4XGfIoUWjh0VOQ09ERVJEh5RMYXZjNjAuMzEuMTAyIGxpYnZweGfIoUWjiERVUkFUSU9ORIeTMDA6MDA6MDIuMDAwMDAwMDAwAB9DtnXt54EAo6OBAACAEAIAnQEqEAAQAABHCIWFiIWEiAICAAwNYAD+/6tQgKOVgQH0ALEBAAEQEAAYABhYL/QACAAAo5WBA+gAsQEAARAQABgAGFgv9AAIAACjlYEF3ACxAQABEBAAGAAYWC/0AAgAABxTu2uRu4+zgQC3iveBAfGCAZ/wgQM=';
+const wantAwake=()=>(awake||!!timer)&&!document.hidden;
+function videoWake(on){
+  if(!on){wakeVid?.pause();return}
+  if(!wakeVid){wakeVid=document.createElement('video');wakeVid.muted=true;wakeVid.loop=true;wakeVid.playsInline=true;
+    ['muted','playsinline','aria-hidden'].forEach(a=>wakeVid.setAttribute(a,a==='aria-hidden'?'true':''));wakeVid.src=wakeVid.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')?AWAKE_MP4:AWAKE_WEBM;
+    wakeVid.style.cssText='position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none';document.body.appendChild(wakeVid)}
+  wakeLock='video';wakeVid.play().catch(()=>{wakeLock='failed'});
+}
+function syncWake(){
+  if(!wantAwake()){
+    if(wakeLock&&wakeLock.release)wakeLock.release().catch(()=>{});
+    if(wakeLock==='video')videoWake(false);
+    if(wakeLock!=='failed')wakeLock=null;return;
+  }
+  if(wakeLock) return;
+  if(!navigator.wakeLock){videoWake(true);return}
+  wakeLock='pending';
+  navigator.wakeLock.request('screen').then(l=>{
+    if(!wantAwake()){l.release().catch(()=>{});wakeLock=null;return}
+    wakeLock=l;l.addEventListener('release',()=>{if(wakeLock===l){wakeLock=null;if(wantAwake())setTimeout(syncWake,1000)}});
+  }).catch(()=>videoWake(true));
 }
 function unlockAudio(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume()}catch{}}
 function beep(n){
@@ -326,13 +351,13 @@ function beep(n){
     o.connect(g);g.connect(actx.destination);g.gain.setValueAtTime(.0001,s);g.gain.exponentialRampToValueAtTime(.5,s+.02);g.gain.exponentialRampToValueAtTime(.0001,s+.2);o.start(s);o.stop(s+.22)}
 }
 const restSecs=()=>plan.rest??90;
-function startRest(){const secs=restSecs();if(!secs)return;timer={kind:'rest',end:Date.now()+secs*1000,total:secs};tick()}
-function startWarm(i){timer={kind:'warm',i,end:Date.now()+WARMUP[i][1]*1000,total:WARMUP[i][1]};tick()}
+function startRest(){const secs=restSecs();if(!secs)return;if(wakeLock==='failed')wakeLock=null;timer={kind:'rest',end:Date.now()+secs*1000,total:secs};tick()}
+function startWarm(i){if(wakeLock==='failed')wakeLock=null;timer={kind:'warm',i,end:Date.now()+WARMUP[i][1]*1000,total:WARMUP[i][1]};tick()}
 const mmss=n=>`${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`;
 function tick(){
   const bar=$('#timerbar');
-  if(!timer){bar.hidden=true;bar.innerHTML='';holdScreen(false);return}
-  holdScreen(true);
+  syncWake();
+  if(!timer){bar.hidden=true;bar.innerHTML='';return}
   const left=Math.max(0,Math.ceil((timer.end-Date.now())/1000));
   if(left<=0){
     if(timer.kind==='rest'){timer=null;beep(3);toast('Rest is up. Next set.')}
@@ -349,7 +374,7 @@ function tick(){
   bar.innerHTML=`<div class="tb-in"><div class="tb-txt">${head}</div><span class="tb-time num" aria-live="off">${mmss(left)}</span><div class="tb-btns">${btns}</div></div><div class="tb-prog"><i style="width:${pct}%"></i></div>`;
 }
 setInterval(()=>{if(timer)tick()},250);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&timer)tick()});
+document.addEventListener('visibilitychange',()=>{if(wakeLock==='failed')wakeLock=null;if(!document.hidden&&timer)tick();else syncWake()});
 function isStrength(t){return t&&t.exercises.some(e=>measureOf(e)==='reps')}
 function warmupCard(t){
   if(!isStrength(t)) return '';
@@ -597,7 +622,7 @@ function viewToday(){
     body=`<div class="row"><button class="link" data-act="show-sets">Log another session of ${esc(t.name)}</button></div>`;
   }else if(!t){
     const xs=plan.templates.filter(x=>x.extra);
-    body=`<div class="empty">Rest day. Recovery is part of the plan.<br>${xs.length?'Feel like an extra day of weights?':'Want to train anyway? Pick a workout above.'}
+    body=`<div class="empty">Rest day. Recovery is part of the plan.<br>${xs.length?'Feel like an extra workout?':'Want to train anyway? Pick a workout above.'}
       ${xs.length?`<div class="row" style="justify-content:center;margin-top:12px;gap:8px">${xs.map(x=>`<button class="btn ghost small" data-act="pick" data-id="${esc(x.id)}">${esc(x.name.replace(/^Extra:\s*/,''))}</button>`).join('')}</div>`:''}</div>`;
   }else{
     const total=draft.exercises.reduce((a,e)=>a+e.sets.length,0), done=draft.exercises.reduce((a,e)=>a+e.sets.filter(s=>s.done).length,0);
@@ -622,6 +647,7 @@ function viewToday(){
       <div><div class="eyebrow">${now.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}${streak?` · <span class="streak">${streak}-week streak</span>`:''}</div><h2>${t?esc(t.name):'Rest day'}</h2></div>
       <label class="row" style="gap:8px"><span class="muted" style="font-size:.85rem">Workout</span><select id="pick">${opts}</select></label>
     </div>
+    <label class="switch"><input type="checkbox" role="switch" id="awake" ${awake?'checked':''}><span class="track" aria-hidden="true"></span>Keep screen awake</label>
     ${phaseBanner()}
     ${todayRecap()}
     ${t&&!loggedOn(todayIso(),t.id)?warmupCard(t):''}
@@ -665,7 +691,7 @@ function viewWorkouts(){
   return `<section class="stack">
     <div class="row spread"><div><div class="eyebrow">${plan.templates.length} workouts</div><h2>Your workouts</h2></div>
       <button class="btn" data-act="addtmpl">New workout</button></div>
-    ${plan.templates.map((t,i)=>`${t.extra&&!plan.templates[i-1]?.extra?`<div><div class="eyebrow">For bonus days</div><h2>Extra weight days</h2><p class="muted" style="margin:4px 0 0;font-size:.9rem">Your original push, pull and legs days. Pick one on the Today tab any time.</p></div>`:''}<div class="card tmpl" data-t="${esc(t.id)}">
+    ${plan.templates.map((t,i)=>`${t.extra&&!plan.templates[i-1]?.extra?`<div><div class="eyebrow">For bonus days</div><h2>Extra days</h2><p class="muted" style="margin:4px 0 0;font-size:.9rem">Your original push, pull and legs days, plus core. Pick one on the Today tab any time, or put one on a day in the Week tab.</p></div>`:''}<div class="card tmpl" data-t="${esc(t.id)}">
       <div class="row spread"><input type="text" class="name" id="tn-${esc(t.id)}" data-tf="name" value="${esc(t.name)}" aria-label="Workout name" style="flex:1">
         ${confirmDel===t.id?`<span class="confirm">Delete ${esc(t.name)}? <button class="btn small" data-act="deltmpl-yes">Delete</button><button class="link" data-act="cancel-confirm">Keep</button></span>`:`<button class="link" data-act="deltmpl">Delete</button>`}</div>
       ${t.exercises.map(e=>{const m=measureOf(e);return `<div class="exrow" data-e="${esc(e.id)}">
@@ -810,6 +836,8 @@ $('#view').addEventListener('change',e=>{
   if(el.id==='bdate'){const b=body.find(x=>x.date===el.value)||{};BODY_FIELDS.forEach(([k])=>{const i=document.getElementById('b-'+k);if(i)i.value=b[k]??''});return}
   if(el.id==='libm'){lib.muscle=el.value;lib.shown=40;render();return}
   if(el.id==='pick'){todayPick=el.value||'';draft=el.value?newDraft(el.value):null;saveDraft();render();return}
+  if(el.id==='awake'){awake=el.checked;lsSet('rp.awake',awake);if(wakeLock==='failed')wakeLock=null;unlockAudio();syncWake();
+    if(awake)setTimeout(()=>toast(wakeLock==='failed'?'This phone didn’t allow the app to keep the screen on':'The screen stays on while Rep Planner is open'),600);return}
   if(el.id==='restsel'){plan.rest=+el.value;savePlan();if(!plan.rest&&timer?.kind==='rest'){timer=null;tick()}return}
   if(el.dataset.set){const [ei,si,f]=el.dataset.set.split('.');const s=draft.exercises[ei].sets[si];
     s[f]=f==='done'?el.checked:Math.max(0,+el.value||0);saveDraft();
@@ -917,7 +945,7 @@ draft=lsGet('rp.draft',null);
 {const u=upgradePlan(lsGet('rp.plan',null)); plan=u.plan; if(u.changed){lsSet('rp.plan',plan);draft=null}}
 logs=lsGet('rp.logs',[]);
 body=lsGet('rp.body',[]);
-setSync(); render(); checkMilestones();
+setSync(); render(); checkMilestones(); syncWake();
 loadPhotos().then(()=>{if(photos.length&&tab==='body'&&!sheet)keepScroll(render)});
 
 /* ---------- exercise library + offline ---------- */
