@@ -732,8 +732,33 @@ function viewProgress(){
     </tbody></table></div>
   </section>`;
 }
-const BODY_FIELDS=[['weight','Body weight','w'],['bodyfat','Body fat','%'],['waist','Waist','l'],['chest','Chest','l'],['arms','Arms','l'],['thighs','Thighs','l'],['hips','Hips','l']];
+const BODY_FIELDS=[['weight','Body weight','w'],['bodyfat','Body fat','%'],['waist','Waist','l'],['neck','Neck','l'],['chest','Chest','l'],['arms','Arms','l'],['thighs','Thighs','l'],['hips','Hips','l']];
 const bodyUnit=k=>{const f=BODY_FIELDS.find(x=>x[0]===k);return f[2]==='w'?plan.unit:f[2]==='%'?'%':(plan.lenUnit||'cm')};
+/* ---------- body fat estimate (US Navy circumference method) ---------- */
+const toCm=v=>plan.lenUnit==='in'?v*2.54:v, fromCm=v=>plan.lenUnit==='in'?v/2.54:v;
+function navyBodyFat(b){
+  const h=+plan.heightCm, sex=plan.bfSex; if(!h||!sex||!b) return null;
+  const waist=toCm(+b.waist||0), neck=toCm(+b.neck||0), hips=toCm(+b.hips||0); if(!waist||!neck) return null;
+  let bf;
+  if(sex==='m'){if(waist<=neck)return null;bf=495/(1.0324-.19077*Math.log10(waist-neck)+.15456*Math.log10(h))-450}
+  else{if(!hips||waist+hips<=neck)return null;bf=495/(1.29579-.35004*Math.log10(waist+hips-neck)+.221*Math.log10(h))-450}
+  return bf>=2&&bf<=60?Math.round(bf*10)/10:null;
+}
+function bodyFatCard(){
+  const need=plan.bfSex==='f'?'neck, waist and hips':'neck and waist';
+  const latest=body.filter(b=>navyBodyFat(b)!=null).sort((a,b)=>b.date.localeCompare(a.date))[0], est=latest&&navyBodyFat(latest);
+  const u=plan.lenUnit||'cm';
+  return `<div class="card"><div class="eyebrow">Body fat estimate · Navy method</div>
+    <div class="row" style="gap:10px;margin:10px 0 4px">
+      <span class="row" style="gap:6px"><span class="muted" style="font-size:.85rem">Formula</span>${[['m','Male'],['f','Female']].map(([k,l])=>`<button class="chip" data-bfsex="${k}" aria-pressed="${plan.bfSex===k}">${l}</button>`).join('')}</span>
+      <label class="row" style="gap:6px;font-size:.85rem"><span class="muted">Height (${esc(u)})</span><input type="number" inputmode="decimal" step="0.5" min="0" id="bfh" value="${plan.heightCm?Math.round(fromCm(+plan.heightCm)*10)/10:''}"></label>
+    </div>
+    ${!plan.bfSex||!plan.heightCm?`<p class="muted" style="font-size:.88rem;margin:8px 0 0">Pick the formula and enter your height. Then log your ${need} below and your body fat is estimated each time you save.</p>`
+      :est!=null?`<div class="row" style="gap:12px;align-items:baseline;margin-top:8px"><span class="bigv num">${fmt(est)}<span style="font-size:1rem"> %</span></span><span class="muted" style="font-size:.85rem">from your ${shortDate(latest.date)} measurements</span></div>
+        <p class="muted" style="font-size:.82rem;margin:6px 0 0">Usually within 3 to 4% of a lab test, so watch the trend more than the number. Measure your neck just below the Adam's apple and your waist at the belly button${plan.bfSex==='f'?' (women: waist at the narrowest point, hips at the widest)':''}.</p>`
+      :`<p class="muted" style="font-size:.88rem;margin:8px 0 0">Log your ${need} below and an estimate appears here. Leave body fat blank and it fills in for you.</p>`}
+  </div>`;
+}
 function viewBody(){
   const today=todayIso(), cur=body.find(b=>b.date===today)||{};
   const pts=body.filter(b=>b[bodyMetric]!=null&&b[bodyMetric]!=='').map(b=>({date:b.date,v:+b[bodyMetric]})).sort((a,b)=>a.date.localeCompare(b.date));
@@ -743,10 +768,11 @@ function viewBody(){
     <div><div class="eyebrow">Body</div><h2>Weight and measurements</h2></div>
     <div class="card"><div class="row spread" style="margin-bottom:10px"><h2 style="font-size:1.2rem">Log measurements</h2>
       <label class="row" style="gap:8px;font-size:.85rem"><span class="muted">Date</span><input type="date" id="bdate" value="${esc(today)}" max="${esc(today)}"></label></div>
-      <div class="bodyform">${BODY_FIELDS.map(([k,l])=>`<label for="b-${k}">${l} (${esc(bodyUnit(k))})<input type="number" inputmode="decimal" step="0.1" min="0" id="b-${k}" value="${cur[k]??''}"></label>`).join('')}</div>
+      <div class="bodyform">${BODY_FIELDS.map(([k,l])=>`<label for="b-${k}">${l} (${esc(bodyUnit(k))})<input type="number" inputmode="decimal" step="0.1" min="0" id="b-${k}" value="${k==='bodyfat'&&cur.bfEst?'':cur[k]??''}"${k==='bodyfat'?` placeholder="${cur.bfEst?'≈'+fmt(cur.bodyfat)+' est.':plan.bfSex&&plan.heightCm?'Auto':''}"`:''}></label>`).join('')}</div>
       <div class="row spread" style="margin-top:12px"><span class="muted" style="font-size:.82rem">Fill in only what you measured. Saving again on the same date updates it.</span>
         <div class="row" style="gap:8px"><select id="lenunit" aria-label="Length unit"><option value="cm" ${(plan.lenUnit||'cm')==='cm'?'selected':''}>cm</option><option value="in" ${plan.lenUnit==='in'?'selected':''}>in</option></select><button class="btn" data-act="body-save">Save</button></div></div>
     </div>
+    ${bodyFatCard()}
     <div class="card">
       <div class="chips" style="margin-bottom:12px">${BODY_FIELDS.map(([k,l])=>`<button class="chip" data-metric="${k}" aria-pressed="${bodyMetric===k}">${l}</button>`).join('')}</div>
       ${pts.length?`<div class="row" style="gap:16px;align-items:baseline;margin-bottom:6px"><span class="bigv num">${fmt(last.v)}<span style="font-size:1rem"> ${esc(u)}</span></span>
@@ -756,7 +782,7 @@ function viewBody(){
     </div>
     ${photosCard()}
     ${body.length?`<div class="card"><div class="eyebrow">History</div><div style="overflow-x:auto"><table><thead><tr><th>Date</th>${BODY_FIELDS.map(([k,l])=>`<th class="r">${l.replace('Body ','')}</th>`).join('')}<th></th></tr></thead><tbody>
-      ${body.slice(0,40).map(b=>`<tr><td class="num muted" style="white-space:nowrap">${shortDate(b.date)}</td>${BODY_FIELDS.map(([k])=>`<td class="r num">${b[k]!=null&&b[k]!==''?fmt(b[k]):''}</td>`).join('')}
+      ${body.slice(0,40).map(b=>`<tr><td class="num muted" style="white-space:nowrap">${shortDate(b.date)}</td>${BODY_FIELDS.map(([k])=>`<td class="r num">${b[k]!=null&&b[k]!==''?(k==='bodyfat'&&b.bfEst?'≈':'')+fmt(b[k]):''}</td>`).join('')}
         <td class="r">${confirmDel==='body:'+b.date?`<span class="confirm"><button class="btn small" data-act="body-del-yes" data-date="${esc(b.date)}">Delete</button><button class="link" data-act="cancel-confirm">Keep</button></span>`:`<button class="link" data-act="body-del" data-date="${esc(b.date)}">Delete</button>`}</td></tr>`).join('')}
     </tbody></table></div></div>`:''}
   </section>`;
@@ -833,7 +859,8 @@ $('#view').addEventListener('change',e=>{
   if(el.id==='restore'){if(el.files[0])restoreBackup(el.files[0]);el.value='';return}
   if(el.id==='exprog'){exProg=el.value;keepScroll(render);return}
   if(el.id==='lenunit'){plan.lenUnit=el.value;savePlan();keepScroll(render);return}
-  if(el.id==='bdate'){const b=body.find(x=>x.date===el.value)||{};BODY_FIELDS.forEach(([k])=>{const i=document.getElementById('b-'+k);if(i)i.value=b[k]??''});return}
+  if(el.id==='bdate'){const b=body.find(x=>x.date===el.value)||{};BODY_FIELDS.forEach(([k])=>{const i=document.getElementById('b-'+k);if(i)i.value=k==='bodyfat'&&b.bfEst?'':b[k]??''});return}
+  if(el.id==='bfh'){const v=+el.value;plan.heightCm=v>0?Math.round(toCm(v)*10)/10:null;savePlan();keepScroll(render);return}
   if(el.id==='libm'){lib.muscle=el.value;lib.shown=40;render();return}
   if(el.id==='pick'){todayPick=el.value||'';draft=el.value?newDraft(el.value):null;saveDraft();render();return}
   if(el.id==='awake'){awake=el.checked;lsSet('rp.awake',awake);if(wakeLock==='failed')wakeLock=null;unlockAudio();syncWake();
@@ -855,6 +882,7 @@ $('#view').addEventListener('change',e=>{
 $('#view').addEventListener('click',async e=>{
   const o=e.target.closest('[data-open]');if(o){openSheet(o.dataset.open);return}
   const ph=e.target.closest('[data-photo]');if(ph){sheet={photo:ph.dataset.photo};renderSheet();return}
+  const bs=e.target.closest('[data-bfsex]');if(bs){plan.bfSex=bs.dataset.bfsex;savePlan();keepScroll(render);return}
   const mt=e.target.closest('[data-metric]');if(mt){bodyMetric=mt.dataset.metric;keepScroll(render);return}
   const c=e.target.closest('[data-cat],[data-gear]');
   if(c){if(c.dataset.cat){lib.cat=c.dataset.cat}else{const g=c.dataset.gear;
@@ -889,10 +917,11 @@ $('#view').addEventListener('click',async e=>{
   if(act==='body-save'){const date=$('#bdate').value||todayIso();const entry={date};let any=false;
     BODY_FIELDS.forEach(([k])=>{const v=document.getElementById('b-'+k).value;if(v!==''&&!isNaN(+v)){entry[k]=+v;any=true}});
     if(!any){toast('Enter at least one measurement');return}
+    let est=null;if(entry.bodyfat==null){est=navyBodyFat(entry);if(est!=null){entry.bodyfat=est;entry.bfEst=true}}
     if(mode==='db'){try{await bodyCol.doc(date).set(entry)}catch(err){if(!onWriteErr(err))return}}
     if(mode==='local'){body=[entry,...body.filter(b=>b.date!==date)].sort((a,b)=>b.date.localeCompare(a.date));lsSet('rp.body',body)}
     const firstField=BODY_FIELDS.find(([k])=>entry[k]!=null);if(entry[bodyMetric]==null&&firstField)bodyMetric=firstField[0];
-    toast('Measurements saved');keepScroll(render);return}
+    toast(est!=null?`Measurements saved. Body fat estimate: ${fmt(est)}%`:'Measurements saved');keepScroll(render);return}
   if(act==='body-del'){confirmDel='body:'+b.dataset.date;keepScroll(render);return}
   if(act==='body-del-yes'){const d=b.dataset.date;confirmDel=null;
     if(mode==='db'){try{await bodyCol.doc(d).delete()}catch(err){if(!onWriteErr(err))return}}
