@@ -120,7 +120,7 @@ td.r,th.r{text-align:right}
 .demo .ph{position:absolute;inset:0;display:grid;place-items:center;color:#5B6773;font-size:.9rem}
 .demo .step{position:absolute;left:8px;bottom:8px;background:rgba(22,32,42,.78);color:#fff;font:500 .72rem var(--mono);padding:3px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.06em}
 ol.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:8px;max-width:65ch}
-/* warm-up, rest timer, nudges, milestones, videos */
+/* warm-up, rest timer, weight checks, milestones, videos */
 .warm summary{display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none}
 .warm summary::-webkit-details-marker{display:none}
 .warm[open] summary .howto{visibility:hidden}
@@ -130,8 +130,14 @@ ol.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:8px;
 .tb-time{font:700 1.9rem/1 var(--display);color:var(--accent);min-width:2.6em;text-align:right}
 .tb-btns{display:flex;gap:6px}
 .tb-prog{height:4px;background:var(--line)}.tb-prog i{display:block;height:100%;background:var(--accent);transition:width .25s linear}
-.nudge{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;background:var(--accent-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:.88rem}
-.tmpl .nudge{margin:8px 0 0}
+.wcheck.ready{border-color:var(--accent)}
+.bumps{list-style:none;margin:10px 0 6px;padding:0;display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+.bumps li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.bumps li:last-child{border-bottom:0}
+.bumps li span:last-child{white-space:nowrap}
+.bumps.swaps li{display:block}
+.steps-next{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:.86rem;color:var(--muted)}
+.steps-next b{color:var(--ink);margin-right:4px}
 .streak{color:var(--hot);font-weight:600}
 .badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
 .badge{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;padding:10px 6px;line-height:1.25;border:1px dashed var(--line);border-radius:10px;font-size:.85rem;opacity:.75}

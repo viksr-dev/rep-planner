@@ -19,7 +19,10 @@ A phone app for planning your training week, logging workouts and tracking progr
 - **Progress:** weekly volume, best sets, and a chart for each exercise.
 - **Body:** log body weight and measurements, with a chart for each.
 
-The plan starts with a gentle 4-week restart phase (3 workouts a week). After 4 weeks where you hit the goal, the app offers to move you up to the full plan.
+The plan is 4 days a week: Push, Pull, Core & abs, and Cardio & stretch, using simple, supported moves to start with. On January 1, 2027 a bodyweight Full body day is added as a 5th day.
+
+- **Weight checks** come every 4 weeks. If you hit your weekly goal in at least 3 of those weeks, lifts where you finished every rep (and that didn't feel hard) go up a small step.
+- **Harder moves** (barbell rows, Romanian deadlifts, skull crushers and so on) are offered from March 1, 2027, once you have 12 weeks where you hit your goal. You can change that date on the Week tab, and switch back if they're too much.
 
 ## Backup
 

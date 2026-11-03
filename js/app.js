@@ -4,8 +4,9 @@ const DAY_NAMES={mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun
 const MEASURES={reps:'reps',secs:'seconds',mins:'minutes'};
 const uid4=()=>Math.random().toString(36).slice(2,10);
 const ex=(name,sets,reps,weight,lib,measure='reps')=>({id:uid4(),name,sets,reps,weight,lib,measure});
-const PLAN_VERSION=5;
+const PLAN_VERSION=6;
 const RESTART_WEEKS=4;
+const TECH_WEEKS=12, CHECK_DAYS=28, FIVE_DAY_ON='2027-01-01', TECH_ON='2027-03-01';
 function buildPlan(){
   const chest={id:'chest',name:'Chest & triceps',exercises:[
     ex('Push-ups',3,15,0,'Pushups'),ex('Dumbbell bench press',4,10,20,'Dumbbell_Bench_Press'),ex('Incline dumbbell press',3,10,16,'Incline_Dumbbell_Press'),
@@ -39,6 +40,79 @@ function restartPlan(){
     ex('Shoulder stretch',2,30,0,'Shoulder_Stretch','secs'),ex("Child's pose",2,30,0,'Childs_Pose','secs')]};
   return {templates:[a,b,walk],week:{mon:null,tue:'r-full-a',wed:null,thu:'r-full-b',fri:'r-walk',sat:'r-full-a',sun:null},goal:3};
 }
+// The 4-day plan from 2026-11: simple, supported moves for getting back into it safely.
+function splitTemplates(){
+  return [
+    {id:'push',name:'Push',exercises:[
+      ex('Dumbbell bench press',3,10,10,'Dumbbell_Bench_Press'),ex('Incline dumbbell press',3,10,8,'Incline_Dumbbell_Press'),
+      ex('Seated dumbbell shoulder press',3,10,6,'Seated_Dumbbell_Press'),ex('Decline dumbbell flyes',2,12,5,'Decline_Dumbbell_Flyes'),
+      ex('Lateral raise',2,12,4,'Side_Lateral_Raise'),ex('Triceps kickback',2,12,5,'Tricep_Dumbbell_Kickback'),ex('Push-ups',2,8,0,'Pushups')]},
+    {id:'pull',name:'Pull',exercises:[
+      ex('Chest-supported dumbbell row',3,10,8,'Dumbbell_Incline_Row'),ex('One-arm dumbbell row',3,10,10,'One-Arm_Dumbbell_Row'),
+      ex('Band pull-apart',2,15,0,'Band_Pull_Apart'),ex('Preacher curl',3,10,10,'Preacher_Curl'),
+      ex('Hammer curl',2,12,6,'Hammer_Curls'),ex('Dumbbell shrug',2,12,10,'Dumbbell_Shrug')]},
+    {id:'core',name:'Core & abs',exercises:[
+      ex('Dead bug',3,10,0,'Dead_Bug'),ex('Plank',3,30,0,'Plank','secs'),ex('Crunches',2,15,0,'Crunches'),ex('Reverse crunch',2,10,0,'Reverse_Crunch'),
+      ex('Bicycle crunch',2,16,0,'Air_Bike'),ex('Side plank (each side)',2,20,0,'Side_Bridge','secs'),ex('Superman',2,10,0,'Superman')]},
+    {id:'cardio-stretch',name:'Cardio & stretch',exercises:[
+      ex('Brisk walk',1,20,0,'Trail_Running_Walking','mins'),ex('Step-ups on the step',3,2,0,'Step-up_with_Knee_Raise','mins'),
+      ex('Hamstring stretch',2,30,0,'Hamstring_Stretch','secs'),ex('Kneeling hip flexor stretch',2,30,0,'Kneeling_Hip_Flexor','secs'),
+      ex('Quad stretch, lying on your side',2,30,0,'On_Your_Side_Quad_Stretch','secs'),ex('Shoulder stretch',2,30,0,'Shoulder_Stretch','secs'),
+      ex('Calf stretch at the wall',2,30,0,'Calf_Stretch_Hands_Against_Wall','secs'),ex('Cat stretch',2,30,0,'Cat_Stretch','secs'),ex("Child's pose",2,45,0,'Childs_Pose','secs')]}];
+}
+// The 5th day from 2027.
+function fullBodyTemplate(){
+  return {id:'bw-full',name:'Full body (bodyweight)',exercises:[
+    ex('Bodyweight squat',3,12,0,'Bodyweight_Squat'),ex('Push-ups',3,8,0,'Pushups'),ex('Step-ups (each leg)',3,10,0,'Step-up_with_Knee_Raise'),
+    ex('Glute bridge',3,12,0,'Butt_Lift_Bridge'),ex('Superman',3,10,0,'Superman'),ex('Mountain climbers',3,20,0,'Mountain_Climbers','secs'),ex('Plank',3,30,0,'Plank','secs')]};
+}
+// Harder moves, once the date and consistency goal are met. [from lib, only this measure, replacement, keep the old weight]
+const TECH_SWAPS=[
+  ['Seated_Dumbbell_Press','reps',()=>ex('Standing dumbbell shoulder press',3,10,0,'Dumbbell_Shoulder_Press'),true],
+  ['Tricep_Dumbbell_Kickback','reps',()=>ex('EZ-bar skull crusher',3,10,15,'EZ-Bar_Skullcrusher')],
+  ['Pushups','reps',()=>ex('Decline push-ups (feet on the bench)',3,8,0,'Decline_Push-Up')],
+  ['Dumbbell_Incline_Row','reps',()=>ex('Bent-over barbell row',3,10,25,'Bent_Over_Barbell_Row')],
+  ['Dumbbell_Shrug','reps',()=>ex('Romanian deadlift (barbell)',3,10,25,'Romanian_Deadlift')],
+  ['Crunches','reps',()=>ex('Russian twist',2,16,0,'Russian_Twist')],
+  ['Reverse_Crunch','reps',()=>ex('Leg raise on the bench',2,10,0,'Flat_Bench_Lying_Leg_Raise')],
+  ['Bodyweight_Squat','reps',()=>ex('Jump squat',3,10,0,'Freehand_Jump_Squat')],
+  ['Step-up_with_Knee_Raise','reps',()=>ex('Walking lunges',3,10,0,'Bodyweight_Walking_Lunge')],
+  ['Butt_Lift_Bridge','reps',()=>ex('Single-leg glute bridge',3,10,0,'Single_Leg_Glute_Bridge')]];
+const kgTo=(kg,unit)=>unit==='lb'?Math.round(kg*2.2/2.5)*2.5:kg;
+// The heaviest weight you last lifted for an exercise, so a new plan starts where you left off.
+function lastWeight(lg,e){
+  for(const l of [...lg].sort((a,b)=>b.date.localeCompare(a.date))){const x=l.exercises.find(y=>(e.lib&&y.lib===e.lib)||y.name===e.name);
+    if(!x||measureOf(x)!=='reps') continue; const w=Math.max(0,...x.sets.filter(s=>s.done).map(s=>+s.weight||0)); if(w>0) return w}
+  return null;
+}
+function techSwap(t,lg){
+  t.exercises=t.exercises.map(e=>{const sw=TECH_SWAPS.find(([lib,m])=>e.lib===lib&&measureOf(e)===m); if(!sw) return e;
+    const n=sw[2](); n.weight=sw[3]?e.weight:(lastWeight(lg,n)??kgTo(n.weight,plan.unit)); return n});
+  return t;
+}
+function splitPlan(prev={},lg=[]){
+  const d=monday(new Date()), start=iso(d), unit=prev.unit||'kg';
+  const old=(prev.templates||[]).filter(t=>!t.extra);
+  const main=splitTemplates();
+  main.forEach(t=>t.exercises.forEach(e=>{if(measureOf(e)!=='reps'||!e.weight) return;
+    const o=old.find(x=>x.exercises?.some(y=>y.lib===e.lib&&+y.weight>0))?.exercises.find(y=>y.lib===e.lib&&+y.weight>0);
+    e.weight=lastWeight(lg,e)??(o?+o.weight:kgTo(e.weight,unit))}));
+  // Keep your training days: the 4 days you already train get Push, Pull, Core, then Cardio & stretch.
+  const days=DAYS.filter(k=>prev.week?.[k]), use=days.length===4?days:['tue','thu','fri','sat'];
+  const week=Object.fromEntries(DAYS.map(k=>[k,null])); ['push','pull','core','cardio-stretch'].forEach((id,i)=>week[use[i]]=id);
+  const wc=new Date(d);wc.setDate(wc.getDate()+CHECK_DAYS);
+  const goals={}; if(prev.templates){const first=lg.length?iso(monday(parseIso(lg.reduce((m,l)=>l.date<m?l.date:m,lg[0].date)))):start; if(first<start) goals[first]=prev.goal||3}
+  goals[start]=4;
+  return {v:PLAN_VERSION,phase:'split',splitStart:start,level:1,templates:[...main,...(prev.templates||extraTemplates()).filter(t=>t.extra)],week,goal:4,goals,
+    wcNext:iso(wc),fiveOn:FIVE_DAY_ON,techOn:TECH_ON,extrasAdded:true,coreAdded:true,gearAdded:true,splitAdded:true,next:null,unit,
+    ...(prev.templates?{prev:{templates:prev.templates.filter(t=>!t.extra),week:prev.week,goal:prev.goal},restartDone:prev.phase==='build'||restartWeeks(prev,lg)>=RESTART_WEEKS}:{}),
+    ...(prev.lenUnit?{lenUnit:prev.lenUnit}:{}),...(prev.rest!=null?{rest:prev.rest}:{}),...(prev.bfSex?{bfSex:prev.bfSex}:{}),...(prev.heightCm?{heightCm:prev.heightCm}:{})};
+}
+function restartWeeks(p,lg){
+  if(p.phase!=='restart'||!p.phaseStart) return 0; const by={};
+  lg.forEach(l=>{if(l.date>=p.phaseStart){const k=iso(monday(parseIso(l.date)));by[k]=(by[k]||0)+1}});
+  return Object.values(by).filter(n=>n>=(p.goal||3)).length;
+}
 // The original Push / Pull / Legs / Full body days, adapted to dumbbells and the preacher bench. Kept as extras for bonus weight days.
 function extraTemplates(){
   return [
@@ -57,14 +131,9 @@ function extraTemplates(){
       ex('Plank',3,30,0,'Plank','secs'),ex('Dead bug',3,10,0,'Dead_Bug'),ex('Leg raise on the bench',3,10,0,'Flat_Bench_Lying_Leg_Raise'),
       ex('Bicycle crunch',3,16,0,'Air_Bike'),ex('Side plank (each side)',2,20,0,'Side_Bridge','secs'),ex('Superman',3,10,0,'Superman')]}];
 }
-function starterPlan(){
-  const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));
-  const ps=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const r=restartPlan();
-  return {v:PLAN_VERSION,phase:'restart',phaseStart:ps,...r,templates:[...r.templates,...extraTemplates()],extrasAdded:true,coreAdded:true,gearAdded:true,next:buildPlan(),unit:'kg'};
-}
+function starterPlan(){return splitPlan()}
 const OLD_STARTER=['Push','Pull','Legs','Full body'].join('|');
-function upgradePlan(p){
+function upgradePlan(p,lg=lsGet('rp.logs',[])){
   const u=upgradePlanCore(p);
   if(!u.plan.extrasAdded){u.plan.templates=[...u.plan.templates,...extraTemplates().filter(x=>!u.plan.templates.some(t=>t.id===x.id))];u.plan.extrasAdded=true;u.plan.coreAdded=true;u.plan.v=PLAN_VERSION;u.changed=true}
   // 2026-10-13: bands and a step joined the home gear, so existing plans get the band and step moves too.
@@ -76,6 +145,8 @@ function upgradePlan(p){
     u.plan.gearAdded=true;u.changed=true;
   }
   if(!u.plan.coreAdded){const core=extraTemplates().find(x=>x.id==='x-core');if(!u.plan.templates.some(t=>t.id===core.id))u.plan.templates.push(core);u.plan.coreAdded=true;u.changed=true}
+  // 2026-11-03: James moved to a 4-day Push / Pull / Core / Cardio & stretch plan, with a 5th day from 2027.
+  if(!u.plan.splitAdded){u.plan=splitPlan(u.plan,Array.isArray(lg)?lg:[]);u.changed=true}
   return u;
 }
 function upgradePlanCore(p){
@@ -91,7 +162,7 @@ function upgradePlanCore(p){
 }
 
 let body=[], bodyCol=null, bodyMetric='weight', exProg='';
-let plan=starterPlan(), logs=[], tab='today', mode='local', readOnly=false, todayPick=null, draft=null, confirmDel=null;
+let plan={templates:[],week:{},goal:4,unit:'kg'}, logs=[], tab='today', mode='local', readOnly=false, todayPick=null, draft=null, confirmDel=null;
 let db=null, planRef=null, logsCol=null;
 const MY_GEAR=['body','db','bar','bands'];
 let lib={q:'',cat:'all',gear:[...MY_GEAR],allGear:false,muscle:'',shown:40};
@@ -299,8 +370,98 @@ function phaseBanner(){
 function phaseUp(){
   if(!plan.next) return;
   const extras=plan.templates.filter(t=>t.extra);
-  plan={...plan,phase:'build',phaseStart:todayIso(),templates:[...plan.next.templates,...extras],week:plan.next.week,goal:plan.next.goal,prev:{templates:plan.templates.filter(t=>!t.extra),week:plan.week,goal:plan.goal},next:null};
+  const g=plan.next.goal||4;
+  plan={...plan,phase:'build',phaseStart:todayIso(),templates:[...plan.next.templates,...extras],week:plan.next.week,prev:{templates:plan.templates.filter(t=>!t.extra),week:plan.week,goal:plan.goal},next:null};setGoal(g);
   draft=null;todayPick=null;saveDraft();savePlan();render();toast('Full plan unlocked. Nice work.');
+}
+/* ---------- plan steps: weight checks, the 5th day, harder moves ---------- */
+const niceDate=s=>{const d=parseIso(s);return d.toLocaleDateString(undefined,{month:'short',day:'numeric',...(d.getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})})};
+const plusDays=(s,n)=>{const d=parseIso(s);d.setDate(d.getDate()+n);return iso(d)};
+const mainTemplates=()=>plan.templates.filter(t=>!t.extra);
+// Goal weeks in the 4 weeks before a weight check.
+function checkWeeks(on){const by=weekCounts();let n=0;for(let i=1;i<=4;i++){const k=plusDays(on,-7*i);if(hitGoal(by,k))n++}return n}
+// A lift goes up when you last finished every rep and it didn't feel hard. Small steps: +1 kg under 10 kg, else +2 kg.
+function weightBumps(){
+  const out=[], recent=sortedLogs();
+  mainTemplates().filter(isStrength).forEach(t=>t.exercises.forEach(te=>{
+    const m=measureOf(te); if(m==='mins') return;
+    let hit=null; for(const l of recent){const e=l.exercises.find(x=>x.name===te.name);if(e){hit=[l,e];break}}
+    if(!hit||hit[0].feel==='hard') return;
+    const [,e]=hit, ok=e.sets.length>=+te.sets&&e.sets.every(s=>s.done&&+s.reps>=+te.reps&&(m!=='reps'||+s.weight>=+te.weight)); if(!ok) return;
+    let b=null;
+    if(m==='secs'){if(+te.reps<90)b={field:'reps',to:+te.reps+10,label:`${+te.reps+10} sec`}}
+    else if(+te.weight>0){const step=plan.unit==='lb'?(+te.weight<20?2.5:5):(+te.weight<10?1:2),to=+te.weight+step;b={field:'weight',to,label:`${fmt(to)} ${plan.unit}`,from:`${fmt(te.weight)} ${plan.unit}`}}
+    else if(+te.reps<20)b={field:'reps',to:+te.reps+2,label:`${+te.reps+2} reps`};
+    if(b) out.push({tid:t.id,eid:te.id,name:te.name,from:b.from||`${te.reps} ${m==='secs'?'sec':'reps'}`,...b});
+  }));
+  return out;
+}
+function weightCheck(){
+  if(plan.phase!=='split'||!plan.wcNext||todayIso()<plan.wcNext) return null;
+  const good=checkWeeks(plan.wcNext), ok=good>=3;
+  return {good,ok,bumps:ok?weightBumps():[]};
+}
+function nextCheck(){return plusDays(iso(monday(new Date())),CHECK_DAYS)}
+function weightCheckCard(){
+  const c=weightCheck(); if(!c) return '';
+  const nx=niceDate(nextCheck());
+  if(!c.ok) return `<div class="card wcheck"><div class="eyebrow">Weight check</div><b>Weights stay the same this time</b>
+    <div class="muted" style="font-size:.88rem;margin-top:4px">You hit your goal in ${c.good} of the last 4 weeks. Weights go up after 3 or more, so you build back up safely. Next check: ${nx}.</div>
+    <div class="row" style="margin-top:10px"><button class="btn small" data-act="wc-skip">OK</button></div></div>`;
+  if(!c.bumps.length) return `<div class="card wcheck"><div class="eyebrow">Weight check</div><b>Consistent, nice work</b>
+    <div class="muted" style="font-size:.88rem;margin-top:4px">No lift is ready yet. A lift goes up once you finish every rep and it doesn't feel hard. Next check: ${nx}.</div>
+    <div class="row" style="margin-top:10px"><button class="btn small" data-act="wc-skip">OK</button></div></div>`;
+  return `<div class="card wcheck ready"><div class="eyebrow">Weight check · ${c.good} of 4 goal weeks</div><b>Ready to go a little heavier</b>
+    <ul class="bumps">${c.bumps.map(b=>`<li><span>${esc(b.name)}</span><span class="num">${esc(b.from)} → <b>${esc(b.label)}</b></span></li>`).join('')}</ul>
+    <div class="row" style="margin-top:10px"><button class="btn" data-act="wc-raise">Raise them</button><button class="link" data-act="wc-skip">Not this time</button></div>
+    <div class="muted" style="font-size:.8rem;margin-top:6px">Next check: ${nx}.</div></div>`;
+}
+function raiseWeights(){
+  const bs=weightBumps();
+  bs.forEach(b=>{const te=tmplById(b.tid)?.exercises.find(x=>x.id===b.eid);if(!te)return;te[b.field]=b.to;
+    if(draft&&draft.templateId===b.tid)draft.exercises.forEach(e=>{if(e.eid===b.eid)e.sets.forEach(s=>{if(!s.done)s[b.field]=b.to})})});
+  plan.wcNext=nextCheck();plan.wcLast={date:todayIso(),n:bs.length};saveDraft();savePlan();toast(`${bs.length} ${bs.length===1?'lift':'lifts'} raised. Next check ${niceDate(plan.wcNext)}.`);
+}
+function addFiveDay(){
+  if(plan.phase!=='split'||plan.fiveDone) return false;
+  const t=fullBodyTemplate(); if((plan.level||1)>=2) techSwap(t,logs);
+  if(!tmplById(t.id)) plan.templates=[...mainTemplates(),t,...plan.templates.filter(x=>x.extra)];
+  const free=['sun','wed','mon'].find(d=>!plan.week[d])||DAYS.find(d=>!plan.week[d]); if(free) plan.week[free]=t.id;
+  setGoal(5);plan.fiveDone=true;savePlan();return true;
+}
+function techInfo(){
+  if(plan.phase!=='split'||(plan.level||1)>=2) return null;
+  const by=weekCounts(); let good=0;
+  for(let w=parseIso(plan.splitStart),end=monday(new Date());w<=end;w.setDate(w.getDate()+7)) if(hitGoal(by,iso(w))) good++;
+  const dateOk=todayIso()>=plan.techOn;
+  return {good,dateOk,ready:dateOk&&good>=TECH_WEEKS};
+}
+function techChanges(){const out=new Map();mainTemplates().forEach(t=>t.exercises.forEach(e=>{const sw=TECH_SWAPS.find(([lib,m])=>e.lib===lib&&measureOf(e)===m);if(sw)out.set(e.name,sw[2]().name)}));return [...out]}
+function levelUp(){
+  plan.lvl1=JSON.parse(JSON.stringify(mainTemplates()));
+  plan.templates=[...mainTemplates().map(t=>techSwap(t,logs)),...plan.templates.filter(x=>x.extra)];
+  plan.level=2;plan.levelOn=todayIso();draft=null;todayPick=null;saveDraft();savePlan();
+}
+function levelDown(){
+  if(!plan.lvl1) return;
+  const have=new Set(plan.lvl1.map(t=>t.id)), added=mainTemplates().filter(t=>!have.has(t.id)).map(t=>{const c=JSON.parse(JSON.stringify(t));
+    c.exercises=c.exercises.map(e=>{const sw=TECH_SWAPS.find(([,,mk])=>mk().lib===e.lib);if(!sw)return e;const o=fullBodyTemplate().exercises.find(x=>x.lib===sw[0]);return o||e});return c});
+  plan.templates=[...plan.lvl1,...added,...plan.templates.filter(x=>x.extra)];
+  plan.level=1;delete plan.lvl1;draft=null;todayPick=null;saveDraft();savePlan();
+}
+function planBanner(){
+  if(plan.phase!=='split') return phaseBanner();
+  const ti=techInfo(), by=weekCounts(), tw=by[iso(monday(new Date()))]||0;
+  if(ti&&ti.ready) return `<div class="card phase ready"><div style="min-width:0"><div class="eyebrow">Harder moves unlocked</div><b>${ti.good} goal weeks done. You're ready for more technical moves.</b>
+    <ul class="bumps swaps">${techChanges().map(([a,b])=>`<li>${esc(a)} <span class="muted">→</span> <b>${esc(b)}</b></li>`).join('')}</ul>
+    <div class="muted" style="font-size:.82rem">Watch the form video for each new move and start light. You can switch back on the Week tab.</div>
+    <div class="row" style="margin-top:12px"><button class="btn" data-act="tech-up">Switch to harder moves</button><button class="link" data-act="tech-later">Not yet</button></div></div></div>`;
+  const steps=[];
+  if(plan.wcNext&&todayIso()<plan.wcNext) steps.push(`<li><b>${niceDate(plan.wcNext)}</b> Weight check. Hit your goal in 3 of the 4 weeks before it and lifts you finish comfortably go up a little.</li>`);
+  if(!plan.fiveDone) steps.push(`<li><b>${niceDate(plan.fiveOn)}</b> Full body (bodyweight) becomes your 5th day.</li>`);
+  if(ti) steps.push(`<li><b>${niceDate(plan.techOn)}</b> Harder moves, once you have ${TECH_WEEKS} goal weeks. ${Math.min(ti.good,TECH_WEEKS)} so far.</li>`);
+  return `<div class="card phase"><div style="min-width:0"><div class="eyebrow">${(plan.level||1)>=2?'Harder moves':'Your plan'} · ${plan.goal} days a week</div>
+    <b>This week: ${Math.min(tw,plan.goal)} of ${plan.goal}</b>${steps.length?`<ul class="steps-next">${steps.join('')}</ul>`:''}</div></div>`;
 }
 function loggedOn(date,tid){return logs.some(l=>l.date===date&&l.templateId===tid)}
 async function logPlanned(tid,date,fromDraft){
@@ -392,70 +553,57 @@ function warmupCard(t){
   return `<details class="card warm"${timer?.kind==='warm'?' open':''}><summary><span><b>Warm up first</b> <span class="muted">· ${Math.round(total/60)} min</span></span><span class="howto">Show</span></summary>
     <ol class="steps" style="margin-top:10px">${WARMUP.map(([n,secs,id])=>`<li>${esc(n)} <span class="muted num">${secs}s</span>${id?` <button class="howto" data-open="${esc(id)}">How to</button>`:''}</li>`).join('')}</ol>
     <div class="row" style="margin-top:12px"><button class="btn" data-act="warm-start">Start warm-up timer</button><button class="link" data-act="warm-skip">Skip today</button></div>
-    <div class="keeprow"><span class="muted">Or follow a free warm-up in Keep</span><span class="row" style="gap:6px">${keepLink()}<button class="btn ghost small" data-act="warm-keep">Done in Keep</button></span></div></details>`;
+    <div class="keeprow"><span class="muted">Or follow a free warm-up in FitOn or Keep</span><span class="row" style="gap:6px">${appLinks()}<button class="btn ghost small" data-act="warm-keep">Done it there</button></span></div></details>`;
 }
 
-/* ---------- Keep app classes ---------- */
-// Keep has no way for other apps to show its classes, so we link out to it and log the session here.
-const KEEP_URL='https://apps.apple.com/app/id1287964023';
-const keepLink=()=>`<a class="btn ghost small" href="${KEEP_URL}" target="_blank" rel="noopener">Open Keep</a>`;
+/* ---------- classes in other apps (FitOn, Keep) ---------- */
+// These apps have no way for other apps to show their classes, so we link out and log the session here.
+const CLASS_APPS={fiton:{name:'FitOn',url:'https://apps.apple.com/app/id1442473191'},keep:{name:'Keep',url:'https://apps.apple.com/app/id1287964023'}};
+const appLinks=()=>Object.values(CLASS_APPS).map(a=>`<a class="btn ghost small" href="${a.url}" target="_blank" rel="noopener">Open ${a.name}</a>`).join('');
 function keepCard(t){
   const l=sortedLogs().find(x=>x.date===todayIso()&&x.keep&&x.templateId===(t?t.id:'keep'));
-  if(l) return `<div class="card donecard"><span class="bigcheck" aria-hidden="true"></span><div><b>Keep class done today</b><div class="muted" style="font-size:.85rem">${l.exercises[0]?.sets[0]?.reps||0} min logged${t?` for ${esc(t.name)}`:''}. It counts toward your week.</div>${feelPrompt(l)}</div></div>`;
-  return `<div class="card keep"><div style="min-width:0"><b>${t?'Doing a Keep class instead?':'Doing a Keep class today?'}</b><div class="muted" style="font-size:.85rem">Follow a free class in Keep, then log it here so it counts toward your week.</div></div>
-    <div class="row" style="gap:8px">${keepLink()}<label class="row" style="gap:6px;font-size:.9rem"><input type="number" inputmode="numeric" min="1" max="300" id="keepmin" value="${lsGet('rp.keepMin',20)}" aria-label="Keep class minutes"> min</label><button class="btn small" data-act="keep-log">Log it</button></div></div>`;
+  if(l) return `<div class="card donecard"><span class="bigcheck" aria-hidden="true"></span><div><b>${esc(l.name)} done today</b><div class="muted" style="font-size:.85rem">${l.exercises[0]?.sets[0]?.reps||0} min logged${t?` for ${esc(t.name)}`:''}. It counts toward your week.</div>${feelPrompt(l)}</div></div>`;
+  const app=CLASS_APPS[lsGet('rp.classApp','fiton')]?lsGet('rp.classApp','fiton'):'fiton';
+  return `<div class="card keep"><div style="min-width:0"><b>${t?'Doing a FitOn or Keep class instead?':'Doing a FitOn or Keep class today?'}</b><div class="muted" style="font-size:.85rem">Follow a free class there, then log it here so it counts toward your week.</div></div>
+    <div class="row" style="gap:8px">${appLinks()}</div>
+    <div class="row" style="gap:8px"><select id="classapp" aria-label="Which app">${Object.entries(CLASS_APPS).map(([k,a])=>`<option value="${k}" ${k===app?'selected':''}>${a.name}</option>`).join('')}</select>
+      <label class="row" style="gap:6px;font-size:.9rem"><input type="number" inputmode="numeric" min="1" max="300" id="keepmin" value="${lsGet('rp.keepMin',20)}" aria-label="Class minutes"> min</label><button class="btn small" data-act="keep-log">Log it</button></div></div>`;
 }
 async function logKeep(tid){
-  const mins=Math.max(1,Math.round(+($('#keepmin')?.value)||20)); lsSet('rp.keepMin',mins);
-  const entry={date:todayIso(),templateId:tid||'keep',name:'Keep class',keep:true,exercises:[{name:'Keep class',lib:null,measure:'mins',sets:[{reps:mins,weight:0,done:true}]}],volume:0,doneSets:0,finishedAt:Date.now()};
+  const mins=Math.max(1,Math.round(+($('#keepmin')?.value)||20)), id=CLASS_APPS[$('#classapp')?.value]?$('#classapp').value:'fiton', name=`${CLASS_APPS[id].name} class`;
+  lsSet('rp.keepMin',mins);lsSet('rp.classApp',id);
+  const entry={date:todayIso(),templateId:tid||'keep',name,keep:true,app:id,exercises:[{name,lib:null,measure:'mins',sets:[{reps:mins,weight:0,done:true}]}],volume:0,doneSets:0,finishedAt:Date.now()};
   if(mode==='db'){try{await logsCol.add(entry)}catch(e){if(!onWriteErr(e))return false}}
   if(mode==='local'){entry.id=uid4();logs=[entry,...logs];lsSet('rp.logs',logs)}
   if(tid&&draft&&draft.templateId===tid){draft=null;saveDraft()}
-  const p=phaseInfo();
-  toast(p&&p.ready?'Logged your Keep class. Restart phase complete!':`Logged a ${mins}-minute Keep class. Nice work.`);
+  toast(`Logged a ${mins}-minute ${name}. Nice work.`);
   celebrateAfterLog([]);
   return true;
 }
 
-/* ---------- add-weight nudges ---------- */
 function sortedLogs(){return logs.slice().sort((a,b)=>b.date.localeCompare(a.date)||(b.finishedAt||0)-(a.finishedAt||0))}
-function nudgeFor(te){
-  const m=measureOf(te); if(!te||m==='mins') return null;
-  const skip=lsGet('rp.nudgeSkip',[]); if(skip.includes(`${te.id}:${te.weight}:${te.reps}`)) return null;
-  const hits=[]; for(const l of sortedLogs()){const e=l.exercises.find(x=>x.name===te.name);if(!e)continue;hits.push([l,e]);if(hits.length===2)break}
-  if(hits.length<2||hits[0][0].feel!=='easy'||hits.some(([l])=>l.feel==='hard')) return null;
-  const ok=hits.every(([,e])=>e.sets.length>=+te.sets&&e.sets.every(s=>s.done&&+s.reps>=+te.reps&&(m!=='reps'||+s.weight>=+te.weight)));
-  if(!ok) return null;
-  if(m==='secs') return {field:'reps',to:+te.reps+10,label:`${+te.reps+10} seconds`};
-  if(+te.weight>0){const to=+te.weight+(plan.unit==='lb'?5:2);return {field:'weight',to,label:`${fmt(to)} ${plan.unit}`}}
-  return {field:'reps',to:+te.reps+2,label:`${+te.reps+2} reps`};
-}
-function nudgeHtml(t,te){
-  const n=te&&nudgeFor(te); if(!n) return '';
-  return `<div class="nudge" data-tid="${esc(t.id)}" data-eid="${esc(te.id)}"><span>Every rep done twice and it felt easy. <b>Try ${esc(n.label)}</b></span>
-    <span class="row" style="gap:6px"><button class="btn small" data-act="bump">Use it</button><button class="link" data-act="bump-skip">Not yet</button></span></div>`;
-}
-function bump(tid,eid){
-  const t=tmplById(tid), te=t&&t.exercises.find(x=>x.id===eid); const n=te&&nudgeFor(te); if(!n) return;
-  te[n.field]=n.to;
-  if(draft&&draft.templateId===tid) draft.exercises.forEach(e=>{if(e.eid===eid||(!e.eid&&e.name===te.name))e.sets.forEach(s=>{if(!s.done)s[n.field]=n.to})});
-  saveDraft();savePlan();toast(`${te.name}: now ${n.label}`);
-}
 
 /* ---------- streaks + milestones ---------- */
 function weekCounts(){const w={};logs.forEach(l=>{const k=iso(monday(parseIso(l.date)));w[k]=(w[k]||0)+1});return w}
-function weekStreak(){const by=weekCounts();let n=0,w=monday(new Date());if((by[iso(w)]||0)<plan.goal)w.setDate(w.getDate()-7);
-  while((by[iso(w)]||0)>=plan.goal){n++;w.setDate(w.getDate()-7)}return n}
+// Each week is judged against the goal you had that week, so a bigger goal later doesn't undo old streaks.
+function goalFor(wk){
+  const ks=Object.keys(plan.goals||{}).sort(); if(!ks.length) return plan.goal;
+  const k=ks.filter(x=>x<=wk).pop()||ks[0]; return plan.goals[k];
+}
+function setGoal(n){plan.goal=n;plan.goals={...(plan.goals||{}),[iso(monday(new Date()))]:n}}
+const hitGoal=(by,k)=>(by[k]||0)>=goalFor(k);
+function weekStreak(){const by=weekCounts();let n=0,w=monday(new Date());if(!hitGoal(by,iso(w)))w.setDate(w.getDate()-7);
+  while(hitGoal(by,iso(w))){n++;w.setDate(w.getDate()-7)}return n}
 function bestStreak(){const by=weekCounts(),keys=Object.keys(by).sort();if(!keys.length)return 0;let best=0,run=0;
-  for(let w=parseIso(keys[0]),end=monday(new Date());w<=end;w.setDate(w.getDate()+7)){if((by[iso(w)]||0)>=plan.goal){run++;best=Math.max(best,run)}else run=0}return best}
+  for(let w=parseIso(keys[0]),end=monday(new Date());w<=end;w.setDate(w.getDate()+7)){if(hitGoal(by,iso(w))){run++;best=Math.max(best,run)}else run=0}return best}
 function milestones(){
-  const total=logs.length, by=weekCounts(), good=Object.values(by).filter(n=>n>=plan.goal).length, best=bestStreak(), thisWeek=by[iso(monday(new Date()))]||0;
-  const p=phaseInfo(), restart=plan.phase==='build'?RESTART_WEEKS:Math.min(p?.good||0,RESTART_WEEKS);
+  const total=logs.length, by=weekCounts(), good=Object.keys(by).filter(k=>hitGoal(by,k)).length, best=bestStreak(), thisWeek=by[iso(monday(new Date()))]||0;
+  const p=phaseInfo(), restart=plan.phase==='restart'?Math.min(p?.good||0,RESTART_WEEKS):plan.phase==='build'||plan.restartDone?RESTART_WEEKS:Math.min(good,RESTART_WEEKS);
   return [['first','First workout','You showed up. That is the hardest part.',total,1],
     ['week1','First full week',`${plan.goal} workouts in one week`,good?plan.goal:thisWeek,plan.goal],
     ['streak2','2-week streak','Two goal weeks in a row',best,2],
     ['w10','10 workouts','Ten sessions logged',total,10],
-    ['restart','Restart done',`${RESTART_WEEKS} consistent weeks, ready for the full plan`,restart,RESTART_WEEKS],
+    ['restart','Restart done',`${RESTART_WEEKS} consistent weeks, back in the habit`,restart,RESTART_WEEKS],
     ['streak4','4-week streak','A month of goal weeks in a row',best,4],
     ['w25','25 workouts','Twenty-five sessions logged',total,25],
     ['streak8','8-week streak','Two months without missing your goal',best,8],
@@ -485,7 +633,7 @@ function feelPrompt(l){
   if(!l) return '';
   if(l.feel) return `<div class="muted" style="font-size:.85rem;margin-top:4px">Felt ${l.feel==='ok'?'OK':l.feel} · <button class="link" data-act="feel-clear" data-id="${esc(l.id)}" style="padding:0">Change</button></div>`;
   return `<div class="feel"><span>How did it feel?</span>${Object.entries(FEEL).map(([k,v])=>`<button class="chip" data-act="feel" data-id="${esc(l.id)}" data-feel="${k}">${v}</button>`).join('')}</div>
-    ${l.keep?'':`<div class="muted" style="font-size:.78rem;margin-top:4px">Easy sessions unlock suggestions to go heavier.</div>`}`;
+    ${l.keep?'':`<div class="muted" style="font-size:.78rem;margin-top:4px">Lifts that felt hard stay the same at the next weight check.</div>`}`;
 }
 function exStats(e){
   const done=e.sets.filter(s=>s.done); if(!done.length) return null;
@@ -622,17 +770,17 @@ function weekRecap(off){
     weight:w2&&w2.date>=start?w2.v:null,delta:w2&&w1&&w2.date>=start?w2.v-w1.v:null};
 }
 function recapCard(off,{title,dismiss,nav}={}){
-  const r=weekRecap(off), hit=r.n>=plan.goal, streak=weekStreak();
+  const r=weekRecap(off), g=goalFor(r.start), hit=r.n>=g, streak=weekStreak();
   const label=title||(off===0?'This week':off===-1?'Last week':`Week of ${shortDate(r.start)}`);
   const line=hit?`Weekly goal hit.${streak>1&&(off===0||(off===-1&&weekRecap(0).n<plan.goal))?` That's ${streak} goal weeks in a row.`:''}`
-    :off===0&&new Date().getDay()!==0?`${plan.goal-r.n} more workout${plan.goal-r.n===1?'':'s'} to hit your goal.`:`${r.n} of ${plan.goal} workouts. Every week is a fresh start.`;
+    :off===0&&new Date().getDay()!==0?`${g-r.n} more workout${g-r.n===1?'':'s'} to hit your goal.`:`${r.n} of ${g} workouts. Every week is a fresh start.`;
   const feel=r.easy||r.hard?` ${r.easy?`${r.easy} felt easy`:''}${r.easy&&r.hard?', ':''}${r.hard?`${r.hard} felt hard`:''}.`:'';
   const first=logs.length?monday(parseIso(logs.reduce((m,l)=>l.date<m?l.date:m,logs[0].date))):monday(new Date());
   const canBack=nav&&parseIso(r.start)>first;
   return `<div class="card recap"><div class="row spread"><div><div class="eyebrow">${shortDate(r.start)} to ${shortDate(r.end)}</div><h2 style="font-size:1.25rem">${esc(label)}</h2></div>
       ${nav?`<span class="row" style="gap:4px"><button class="btn ghost small" data-act="recap-prev" ${canBack?'':'disabled'} aria-label="Previous week">‹</button><button class="btn ghost small" data-act="recap-next" ${off<0?'':'disabled'} aria-label="Next week">›</button></span>`:''}</div>
     <div class="recapgrid">
-      <div><span class="num">${r.n}<small>/${plan.goal}</small></span>workouts</div>
+      <div><span class="num">${r.n}<small>/${g}</small></span>workouts</div>
       <div><span class="num">${r.sets}</span>sets</div>
       <div><span class="num">${r.vol>=10000?fmt(r.vol/1000)+'k':fmt(r.vol)}</span>${esc(plan.unit)} lifted</div>
       <div><span class="num">${r.prs}</span>personal best${r.prs===1?'':'s'}</div>
@@ -670,8 +818,7 @@ function viewToday(){
       <div class="row spread"><div class="eyebrow">${done} of ${total} sets done${vol?` · ${fmt(vol)} ${esc(plan.unit)} lifted`:''}</div>
         <label class="row" style="gap:6px;font-size:.85rem"><span class="muted">Rest timer</span><select id="restsel">${REST_CHOICES.map(([v,l])=>`<option value="${v}" ${restSecs()===v?'selected':''}>${l}</option>`).join('')}</select></label></div>
       <div class="donebar" style="margin:8px 0 6px"><i style="width:${total?done/total*100:0}%"></i></div>
-      ${draft.exercises.map((e,ei)=>{const m=measureOf(e), te=t.exercises.find(x=>x.id===e.eid)||t.exercises.find(x=>x.name===e.name);return `<div class="ex"><h3>${esc(e.name)}${e.lib&&EXBY[e.lib]?`<button class="howto" data-open="${esc(e.lib)}">How to</button><button class="howto" data-act="swap" data-ei="${ei}">Swap</button>`:''}</h3>
-        ${nudgeHtml(t,te)}
+      ${draft.exercises.map((e,ei)=>{const m=measureOf(e);return `<div class="ex"><h3>${esc(e.name)}${e.lib&&EXBY[e.lib]?`<button class="howto" data-open="${esc(e.lib)}">How to</button><button class="howto" data-act="swap" data-ei="${ei}">Swap</button>`:''}</h3>
         <div class="sets"><span class="hd">Set</span><span class="hd">${amountHead(m)}</span><span class="hd">${m==='reps'?esc(plan.unit):''}</span><span class="hd">Done</span>
         ${e.sets.map((s,si)=>`<span class="num muted">${si+1}</span>
           <input type="number" inputmode="numeric" min="0" id="r-${ei}-${si}" data-set="${ei}.${si}.reps" value="${s.reps}" aria-label="${esc(e.name)} set ${si+1} ${amountHead(m).toLowerCase()}">
@@ -687,7 +834,8 @@ function viewToday(){
       <label class="row" style="gap:8px"><span class="muted" style="font-size:.85rem">Workout</span><select id="pick">${opts}</select></label>
     </div>
     <label class="switch"><input type="checkbox" role="switch" id="awake" ${awake?'checked':''}><span class="track" aria-hidden="true"></span>Keep screen awake</label>
-    ${phaseBanner()}
+    ${weightCheckCard()}
+    ${planBanner()}
     ${todayRecap()}
     ${t&&!loggedOn(todayIso(),t.id)?warmupCard(t):''}
     ${t&&!keepDone?(loggedOn(todayIso(),t.id)?`<div class="card donecard"><span class="bigcheck" aria-hidden="true"></span><div><b>${esc(t.name)} done today</b><div class="muted" style="font-size:.85rem">Logged. Rest up and come back tomorrow.</div>${feelPrompt(sortedLogs().find(l=>l.date===todayIso()&&l.templateId===t.id))}</div></div>`
@@ -703,13 +851,22 @@ function weekDone(){
   logs.forEach(l=>{const d=parseIso(l.date); if(d>=m && d<new Date(m.getTime()+7*864e5)) set.add(dayKey(d))});
   return set;
 }
+function splitControls(){
+  const parts=[];
+  if(!plan.fiveDone) parts.push(confirmDel==='five'?`<span class="confirm">Add Full body (bodyweight) as a 5th day now? <button class="btn small" data-act="five-yes">Add it</button><button class="link" data-act="cancel-confirm">Wait for ${esc(niceDate(plan.fiveOn))}</button></span>`
+    :`<button class="link" data-act="five-ask">Start the 5-day plan now</button>`);
+  if((plan.level||1)<2) parts.push(`<label class="row" style="gap:8px;font-size:.9rem">Harder moves from <input type="date" id="techon" value="${esc(plan.techOn)}"></label>`);
+  else if(plan.lvl1) parts.push(confirmDel==='tech-down'?`<span class="confirm">Go back to the simpler moves? <button class="btn small" data-act="tech-down-yes">Go back</button><button class="link" data-act="cancel-confirm">Keep these</button></span>`
+    :`<button class="link" data-act="tech-down-ask">Back to the simpler moves</button>`);
+  return parts.join('');
+}
 function viewWeek(){
   const tk=dayKey(new Date()), done=weekDone(), planned=DAYS.filter(d=>plan.week[d]).length;
   return `<section class="stack">
     <div><div class="eyebrow">This week</div><h2>${planned} training days planned</h2></div>
     <div class="week">${DAYS.map(d=>{const t=tmplById(plan.week[d]);return `<div class="day ${d===tk?'today':''}">
       <div class="d">${DAY_NAMES[d]}</div><div class="w ${t?'':'rest'}">${t?esc(t.name):'Rest'}</div>${done.has(d)?'<div class="tick">Done</div>':(t&&DAYS.indexOf(d)<=DAYS.indexOf(tk)&&!readOnly?`<button class="didit" data-act="did-day" data-day="${d}" aria-label="I did ${esc(t.name)} on ${DAY_NAMES[d]}">Did it</button>`:'')}</div>`}).join('')}</div>
-    ${phaseBanner()}
+    ${planBanner()}
     <div class="card">
       <div class="row spread"><h2 style="font-size:1.2rem">Set your week</h2>
         <label class="row" style="gap:8px;font-size:.9rem">Weekly goal <input type="number" id="goal" min="1" max="14" value="${plan.goal}"> workouts</label></div>
@@ -717,8 +874,9 @@ function viewWeek(){
         <select id="pd-${d}" data-day="${d}"><option value="">Rest</option>${tmplOptions(plan.week[d])}</select></div>`).join('')}</div>
       <div class="row spread" style="margin-top:12px">
         <div class="row" style="gap:8px;font-size:.9rem"><span class="muted">Units</span><select id="unit"><option ${plan.unit==='kg'?'selected':''}>kg</option><option ${plan.unit==='lb'?'selected':''}>lb</option></select></div>
+        ${plan.phase==='split'?splitControls():''}
         ${plan.phase==='restart'&&plan.next?(confirmDel==='phase-up'?`<span class="confirm">Skip the restart phase and start the full plan now? <button class="btn small" data-act="phase-up">Start it</button><button class="link" data-act="cancel-confirm">Not yet</button></span>`:`<button class="link" data-act="phase-ask">Skip to the full plan</button>`):''}
-        ${confirmDel==='reset-plan'?`<span class="confirm">Start over with the 4-week restart plan? Your workouts and week are replaced. <button class="btn small" data-act="resetplan-yes">Replace</button><button class="link" data-act="cancel-confirm">Keep mine</button></span>`:`<button class="link" data-act="resetplan">Start over</button>`}
+        ${confirmDel==='reset-plan'?`<span class="confirm">Start over with the 4-day plan? Your workouts and week are replaced. <button class="btn small" data-act="resetplan-yes">Replace</button><button class="link" data-act="cancel-confirm">Keep mine</button></span>`:`<button class="link" data-act="resetplan">Start over</button>`}
       </div>
     </div>
     <div class="card"><h2 style="font-size:1.2rem">Backup</h2>
@@ -740,7 +898,7 @@ function viewWorkouts(){
         <label class="f" for="er-${esc(e.id)}">${amountHead(m)}<input type="number" id="er-${esc(e.id)}" data-ef="reps" min="0" value="${e.reps}"></label>
         ${m==='reps'?`<label class="f" for="ew-${esc(e.id)}">${esc(plan.unit)}<input type="number" id="ew-${esc(e.id)}" data-ef="weight" min="0" step="0.5" value="${e.weight}"></label>`:'<span></span>'}
         <label class="f" for="em-${esc(e.id)}">Count by<select id="em-${esc(e.id)}" data-ef="measure">${Object.entries(MEASURES).map(([k,v])=>`<option value="${k}" ${m===k?'selected':''}>${v}</option>`).join('')}</select></label>
-        </div>${nudgeHtml(t,e)}`}).join('')}
+        </div>`}).join('')}
       <div class="row spread" style="margin-top:10px"><span class="muted" style="font-size:.82rem">Your targets fill in each set on the Today tab.</span>
         <span class="row" style="gap:8px"><button class="btn ghost small" data-act="addex">Add blank</button><button class="btn small" data-act="addlib">Add from library</button></span></div>
     </div>`).join('')}
@@ -910,7 +1068,8 @@ $('#view').addEventListener('change',e=>{
     s[f]=f==='done'?el.checked:Math.max(0,+el.value||0);saveDraft();
     if(f==='done'){keepScroll(render);if(el.checked&&draft.exercises.some(e=>e.sets.some(x=>!x.done)))startRest()}return}
   if(el.dataset.day){plan.week[el.dataset.day]=el.value||null;savePlan();render();return}
-  if(el.id==='goal'){plan.goal=Math.min(14,Math.max(1,+el.value||1));savePlan();return}
+  if(el.id==='goal'){setGoal(Math.min(14,Math.max(1,+el.value||1)));savePlan();return}
+  if(el.id==='techon'){if(/^\d{4}-\d{2}-\d{2}$/.test(el.value)){plan.techOn=el.value;savePlan();keepScroll(render)}return}
   if(el.id==='unit'){plan.unit=el.value;savePlan();render();return}
   const card=el.closest('.tmpl');if(!card)return;
   const t=tmplById(card.dataset.t);
@@ -937,10 +1096,6 @@ $('#view').addEventListener('click',async e=>{
   if(act==='lib-cancel'){const id=lib.target;lib.target=null;tab='workouts';render();setTimeout(()=>document.querySelector(`[data-t="${CSS.escape(id)}"]`)?.scrollIntoView({block:'center'}));return}
   if(act==='finish') return finishWorkout();
   if(act==='pick'){todayPick=b.dataset.id;draft=newDraft(todayPick);saveDraft();render();scrollTo(0,0);return}
-  if(act==='bump'||act==='bump-skip'){const n=b.closest('.nudge');
-    if(act==='bump')bump(n.dataset.tid,n.dataset.eid);
-    else{const te=tmplById(n.dataset.tid)?.exercises.find(x=>x.id===n.dataset.eid);if(te)lsSet('rp.nudgeSkip',[...lsGet('rp.nudgeSkip',[]),`${te.id}:${te.weight}:${te.reps}`].slice(-200))}
-    keepScroll(render);return}
   if(act==='feel'||act==='feel-clear'){const l=logs.find(x=>x.id===b.dataset.id);if(l){if(act==='feel')l.feel=b.dataset.feel;else delete l.feel;lsSet('rp.logs',logs)}keepScroll(render);return}
   if(act==='swap'){sheet={swap:{ei:+b.dataset.ei}};renderSheet();return}
   if(act==='recap-prev'||act==='recap-next'){recapOff=Math.min(0,recapOff+(act==='recap-next'?1:-1));keepScroll(render);return}
@@ -955,6 +1110,14 @@ $('#view').addEventListener('click',async e=>{
   if(act==='did-day'){const d=b.dataset.day,t=tmplById(plan.week[d]);const date=new Date(monday(new Date()));date.setDate(date.getDate()+DAYS.indexOf(d));
     if(t&&await logPlanned(t.id,iso(date),false))keepScroll(render);return}
   if(act==='phase-ask'){confirmDel='phase-up';keepScroll(render);return}
+  if(act==='wc-raise'){raiseWeights();keepScroll(render);return}
+  if(act==='wc-skip'){plan.wcNext=nextCheck();savePlan();keepScroll(render);return}
+  if(act==='five-ask'){confirmDel='five';keepScroll(render);return}
+  if(act==='five-yes'){confirmDel=null;addFiveDay();keepScroll(render);toast('Full body (bodyweight) added to your week');return}
+  if(act==='tech-up'){levelUp();render();scrollTo(0,0);toast('Harder moves are in. Start light and watch the form videos.');return}
+  if(act==='tech-down-ask'){confirmDel='tech-down';keepScroll(render);return}
+  if(act==='tech-down-yes'){confirmDel=null;levelDown();plan.techOn=plusDays(todayIso(),28);savePlan();keepScroll(render);toast(`Back to the simpler moves. Harder moves come back on ${niceDate(plan.techOn)}.`);return}
+  if(act==='tech-later'){plan.techOn=plusDays(todayIso(),28);savePlan();keepScroll(render);toast(`OK. Harder moves will be offered again on ${niceDate(plan.techOn)}.`);return}
   if(act==='phase-up'){confirmDel=null;phaseUp();scrollTo(0,0);return}
   if(act==='body-save'){const date=$('#bdate').value||todayIso();const entry={date};let any=false;
     BODY_FIELDS.forEach(([k])=>{const v=document.getElementById('b-'+k).value;if(v!==''&&!isNaN(+v)){entry[k]=+v;any=true}});
@@ -1016,6 +1179,7 @@ draft=lsGet('rp.draft',null);
 {const u=upgradePlan(lsGet('rp.plan',null)); plan=u.plan; if(u.changed){lsSet('rp.plan',plan);draft=null}}
 logs=lsGet('rp.logs',[]);
 body=lsGet('rp.body',[]);
+if(plan.phase==='split'&&!plan.fiveDone&&todayIso()>=plan.fiveOn&&addFiveDay()) setTimeout(()=>toast('Happy new year! Full body (bodyweight) is now your 5th day.'),400);
 setSync(); render(); checkMilestones(); syncWake();
 loadPhotos().then(()=>{if(photos.length&&tab==='body'&&!sheet)keepScroll(render)});
 
@@ -1038,7 +1202,7 @@ async function exportBackup(){
 }
 function restoreBackup(fileObj){
   const r=new FileReader();r.onload=async()=>{let d;try{d=JSON.parse(r.result);if(d.app!=='rep-planner'||!d.plan)throw 0}catch{toast('That file isn’t a Rep Planner backup');return}
-    plan=upgradePlan(d.plan).plan;logs=Array.isArray(d.logs)?d.logs:[];body=Array.isArray(d.body)?d.body:[];
+    plan=upgradePlan(d.plan,d.logs).plan;logs=Array.isArray(d.logs)?d.logs:[];body=Array.isArray(d.body)?d.body:[];
     lsSet('rp.plan',plan);lsSet('rp.logs',logs);lsSet('rp.body',body);draft=null;saveDraft();confirmDel=null;checkMilestones();
     let lost=0;if(Array.isArray(d.photos))for(const p of d.photos){try{const blob=await (await fetch(p.data)).blob();await photoStore('readwrite',s=>s.put({id:p.id,date:p.date,blob}))}catch{lost++}}
     await loadPhotos();render();toast(lost?`Backup restored, but ${lost} photo${lost===1?'':'s'} couldn’t be restored`:'Backup restored')};
